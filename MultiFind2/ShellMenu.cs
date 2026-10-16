@@ -16,6 +16,14 @@ namespace MultiFind2;
 internal static class ShellMenu
 {
     /// <summary>
+    /// Above this the selection is handed to the caller's own menu instead. Building the shell's
+    /// means a PIDL per file and then every installed handler inspecting the lot, which Select
+    /// All over a result set of hundreds of thousands would turn into a hang. Explorer itself
+    /// gives up on large selections for the same reason.
+    /// </summary>
+    private const int MaxItems = 1000;
+
+    /// <summary>
     /// Pops the menu up at <paramref name="screen"/> and runs whatever is chosen. Returns false
     /// if the shell would not produce a menu -- a deleted file, most likely -- so the caller can
     /// fall back to its own.
@@ -23,7 +31,7 @@ internal static class ShellMenu
     public static bool Show(IWin32Window owner, IReadOnlyList<string> paths, Point screen,
                             IReadOnlyList<(string Text, Action Run)> extra)
     {
-        if (paths.Count == 0) return false;
+        if (paths.Count == 0 || paths.Count > MaxItems) return false;
 
         var pidls = new List<IntPtr>(paths.Count);
         object? menu = null;

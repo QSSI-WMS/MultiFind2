@@ -137,6 +137,64 @@ internal sealed class ThemedListView : ListView
     /// <summary>True for the trailing filler, which carries no data and cannot be sorted.</summary>
     public bool IsFiller(int column) => _filler != null && column == Columns.Count - 1;
 
+    /// <summary>
+    /// Selects or deselects every row in a single native call.
+    ///
+    /// The obvious managed version -- <c>SelectedIndices.Add(i)</c> in a loop -- costs one
+    /// synchronous LVM_SETITEMSTATE per row, and each of those re-enters this control's WndProc
+    /// to deliver the SelectedIndexChanged it raises. At a few hundred thousand results that is
+    /// a hung UI thread, which is exactly what a 422k-file search produced. LVM_SETITEMSTATE
+    /// with item -1 means "all of them", and a virtual list reports the lot as one change.
+    /// </summary>
+    public void SetAllSelected(bool selected)
+    {
+        if (!IsHandleCreated) return;
+        var item = new LVITEM { stateMask = LVIS_SELECTED, state = selected ? LVIS_SELECTED : 0 };
+        SendMessage(Handle, LVM_SETITEMSTATE, (IntPtr)(-1), ref item);
+    }
+
+    /// <summary>
+    /// The lowest selected row, or -1 for none. One native call, where
+    /// <c>SelectedIndices.Cast&lt;int&gt;().First()</c> first builds the whole index array --
+    /// a couple of seconds once a Select All is in force, paid on the UI thread every time the
+    /// preview refreshes.
+    /// </summary>
+    public int FirstSelectedIndex =>
+        IsHandleCreated
+            ? (int)SendMessage(Handle, LVM_GETNEXTITEM, (IntPtr)(-1), (IntPtr)LVNI_SELECTED)
+            : -1;
+
+    private const int LVM_SETITEMSTATE = 0x1000 + 43;
+    private const int LVM_GETNEXTITEM = 0x1000 + 12;
+    private const uint LVIS_SELECTED = 2;
+    private const int LVNI_SELECTED = 2;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LVITEM
+    {
+        public uint mask;
+        public int iItem;
+        public int iSubItem;
+        public uint state;
+        public uint stateMask;
+        public IntPtr pszText;
+        public int cchTextMax;
+        public int iImage;
+        public IntPtr lParam;
+        public int iIndent;
+        public int iGroupId;
+        public uint cColumns;
+        public IntPtr puColumns;
+        public IntPtr piColFmt;
+        public int iGroup;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref LVITEM lParam);
+
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);

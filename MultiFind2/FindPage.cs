@@ -338,7 +338,7 @@ public partial class FindPage : UserControl
         lvErrors.RetrieveVirtualItem += OnRetrieveError;
 
         lvFound.ColumnClick += OnFoundColumnClick;
-        lvFound.DoubleClick += (_, _) => ShellOpen(SelectedPaths().FirstOrDefault());
+        lvFound.DoubleClick += (_, _) => ShellOpen(FirstSelectedMatch()?.FullPath);
 
         // No ContextMenuStrip: the shell menu is shown by hand so it can be tracked natively.
         // _ownMenu is what gets used when the shell declines -- a row whose file has since been
@@ -897,7 +897,7 @@ public partial class FindPage : UserControl
         _previewCts = new CancellationTokenSource();
         var token = _previewCts.Token;
 
-        var selected = SelectedMatches().FirstOrDefault();
+        var selected = FirstSelectedMatch();
         if (selected == null || selected.IsFolder)
         {
             pvMatches.Clear(selected == null ? "Select a file above to preview it." : null);
@@ -1092,8 +1092,8 @@ public partial class FindPage : UserControl
     {
         var menu = new ContextMenuStrip { Renderer = new ThemeMenuRenderer() };
         Style(() => { menu.BackColor = CMantle; menu.ForeColor = CText; });
-        menu.Items.Add("&Open", null, (_, _) => ShellOpen(SelectedPaths().FirstOrDefault()));
-        menu.Items.Add("Open file &location", null, (_, _) => OpenLocation(SelectedPaths().FirstOrDefault()));
+        menu.Items.Add("&Open", null, (_, _) => ShellOpen(FirstSelectedMatch()?.FullPath));
+        menu.Items.Add("Open file &location", null, (_, _) => OpenLocation(FirstSelectedMatch()?.FullPath));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("&Copy full path", null, (_, _) => CopyToClipboard(SelectedPaths()));
         menu.Items.Add("Copy file &name", null, (_, _) => CopyToClipboard(SelectedMatches().Select(m => m.FileName)));
@@ -1109,11 +1109,21 @@ public partial class FindPage : UserControl
 
     private IEnumerable<string> SelectedPaths() => SelectedMatches().Select(m => m.FullPath);
 
+    /// <summary>
+    /// The topmost selected row. Separate from <see cref="SelectedMatches"/> because asking for
+    /// the whole selection to take the first of it walks every selected row, and after a Select
+    /// All over a few hundred thousand results that is seconds -- for one file's preview.
+    /// </summary>
+    private FileMatch? FirstSelectedMatch()
+    {
+        var i = lvFound.FirstSelectedIndex;
+        return (uint)i < (uint)_matches.Count ? _matches[i] : null;
+    }
+
     public void SelectAllResults()
     {
         if (_matches.Count == 0) return;
-        lvFound.SelectedIndices.Clear();
-        for (var i = 0; i < _matches.Count; i++) lvFound.SelectedIndices.Add(i);
+        lvFound.SetAllSelected(true);
     }
 
     public void CopySelectionToClipboard() => CopyToClipboard(SelectedPaths());
