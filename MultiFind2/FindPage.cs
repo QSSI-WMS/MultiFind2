@@ -85,6 +85,17 @@ public partial class FindPage : UserControl
         Invalidate(true);
     }
 
+    /// <summary>
+    /// The icons are drawn for one pixel size, so dragging the window to a monitor at another
+    /// scale has to redraw them. Replaying the whole restyle is the same work as the theme
+    /// switch it already handles, and happens about as often.
+    /// </summary>
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        ApplyTheme();
+    }
+
     private void BuildTheme()
     {
         Style(() => { BackColor = CBase; ForeColor = CText; });
@@ -136,14 +147,25 @@ public partial class FindPage : UserControl
             Style(() => { c.BackColor = CBase; c.ForeColor = CText; });
         }
 
-        foreach (var button in new[] { btnPathBrowse, btnPathMulti, btnNameMulti, btnBackups })
-            StyleSmallButton(button);
+        StyleSmallButton(btnPathBrowse, Glyph.Browse);
+        StyleSmallButton(btnPathMulti, Glyph.FolderStack);
+        StyleSmallButton(btnNameMulti, Glyph.DocStack);
+        StyleSmallButton(btnBackups);
 
-        // Content toggles highlight when switched on. btnSubfolders is inverted: it ships
-        // checked, so the state worth flagging is the unchecked one (this folder only).
-        foreach (var toggle in new[] { chkCase, chkWhole, chkHex, chkRegex })
-            StyleToggle(toggle, highlightWhenChecked: true);
-        StyleToggle(btnSubfolders, highlightWhenChecked: false);
+        // Content toggles highlight when switched on, and carry a tick while they are.
+        StyleToggle(chkCase, highlightWhenChecked: true, on => (Glyph.MatchCase, Mark(on)));
+        StyleToggle(chkWhole, highlightWhenChecked: true, on => (Glyph.WholeWord, Mark(on)));
+        StyleToggle(chkHex, highlightWhenChecked: true, on => (Glyph.Hex, Mark(on)));
+        StyleToggle(chkRegex, highlightWhenChecked: true, on => (Glyph.Regex, Mark(on)));
+
+        // btnSubfolders is inverted: it ships checked, so the state worth flagging is the
+        // unchecked one. Its two states are different pictures rather than one with a badge,
+        // because searching a tree and searching a single folder are different things, not a
+        // setting turned on and off.
+        StyleToggle(btnSubfolders, highlightWhenChecked: false,
+                    on => (on ? Glyph.SubfolderTree : Glyph.FolderOnly, Badge.None));
+
+        static Badge Mark(bool on) => on ? Badge.Check : Badge.None;
 
         foreach (var tri in new[] { tsHidden, tsReadOnly, tsFolders })
         {
@@ -205,7 +227,7 @@ public partial class FindPage : UserControl
         Style(() => { combo.BackColor = CCrust; combo.ForeColor = CText; });
     }
 
-    private void StyleSmallButton(Button button)
+    private void StyleSmallButton(Button button, Glyph? glyph = null)
     {
         button.FlatStyle = FlatStyle.Flat;
         button.FlatAppearance.BorderSize = 1;
@@ -214,14 +236,26 @@ public partial class FindPage : UserControl
             button.BackColor = CSurface0;
             button.ForeColor = CText;
             button.FlatAppearance.BorderColor = CSurface1;
+            if (glyph is { } g) SetIcon(button, g, Badge.None);
         });
+    }
+
+    /// <summary>
+    /// Draws the icon in the colours the button has just been given. Order matters: the glyph is
+    /// rendered in the foreground against the background, so it has to come after they are set.
+    /// </summary>
+    private static void SetIcon(ButtonBase button, Glyph glyph, Badge badge)
+    {
+        button.Text = "";
+        button.Image = Icons.Get(glyph, badge, button.ForeColor, button.BackColor,
+                                 Icons.SizeFor(button));
     }
 
     /// <summary>
     /// A button-style CheckBox. Flat appearance is required: a visual-style button ignores
     /// BackColor, which would hide both the palette and the active-filter highlight.
     /// </summary>
-    private void StyleToggle(CheckBox box, bool highlightWhenChecked)
+    private void StyleToggle(CheckBox box, bool highlightWhenChecked, Func<bool, (Glyph, Badge)> art)
     {
         box.FlatStyle = FlatStyle.Flat;
         box.FlatAppearance.BorderSize = 1;
@@ -234,9 +268,13 @@ public partial class FindPage : UserControl
             box.ForeColor = active ? t.ActiveFilterText : t.Text;
             box.FlatAppearance.BorderColor = active ? t.ActiveFilterBorder : t.Surface1;
             box.FlatAppearance.CheckedBackColor = highlightWhenChecked ? t.ActiveFilterBg : t.Surface0;
+
+            var (glyph, badge) = art(box.Checked);
+            SetIcon(box, glyph, badge);
         }
 
         box.CheckedChanged += (_, _) => Paint();
+        box.DpiChangedAfterParent += (_, _) => Paint();
         Style(Paint);
     }
 
@@ -386,7 +424,7 @@ public partial class FindPage : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "MultiFind", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, ex.Message, "MultiFind2", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -439,7 +477,7 @@ public partial class FindPage : UserControl
         Report($"{_matches.Count} files found", state, result.Elapsed);
 
         if (result.Outcome == SearchOutcome.Failed && result.Message != null)
-            MessageBox.Show(this, result.Message, "MultiFind", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, result.Message, "MultiFind2", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     /// <summary>
@@ -652,7 +690,7 @@ public partial class FindPage : UserControl
     }
 
     private void Warn(string message)
-        => MessageBox.Show(this, message, "MultiFind", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        => MessageBox.Show(this, message, "MultiFind2", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
     private void SetRunning(bool running)
     {

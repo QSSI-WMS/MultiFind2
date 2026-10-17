@@ -217,7 +217,6 @@ partial class FindPage
         btnPathBrowse.Location = new Point(432, 20);
         btnPathBrowse.Name = "btnPathBrowse";
         btnPathBrowse.Size = new Size(28, 23);
-        btnPathBrowse.Text = "...";
         btnPathBrowse.TabIndex = 2;
         btnPathBrowse.UseVisualStyleBackColor = true;
         tips.SetToolTip(btnPathBrowse, "Browse for folder");
@@ -226,9 +225,9 @@ partial class FindPage
         btnPathMulti.Location = new Point(462, 20);
         btnPathMulti.Name = "btnPathMulti";
         btnPathMulti.Size = new Size(28, 23);
-        // "..." browses for one thing; the list glyph means "edit the include/exclude lists".
-        // Without the distinction the two adjacent buttons read as the same control.
-        btnPathMulti.Text = "\u2261";
+        // The open folder next door browses for one thing; a stack of them means "edit the
+        // include/exclude lists". Without the distinction the two adjacent buttons read as
+        // the same control.
         btnPathMulti.TabIndex = 3;
         btnPathMulti.UseVisualStyleBackColor = true;
         tips.SetToolTip(btnPathMulti, "Browse for multiple folders");
@@ -241,8 +240,7 @@ partial class FindPage
         btnSubfolders.Location = new Point(522, 20);
         btnSubfolders.Name = "btnSubfolders";
         btnSubfolders.Size = new Size(28, 23);
-        btnSubfolders.Text = "S";
-        btnSubfolders.TextAlign = ContentAlignment.MiddleCenter;
+        btnSubfolders.ImageAlign = ContentAlignment.MiddleCenter;
         btnSubfolders.TabIndex = 4;
         btnSubfolders.UseVisualStyleBackColor = true;
         tips.SetToolTip(btnSubfolders, "Include subfolders");
@@ -262,28 +260,27 @@ partial class FindPage
         btnNameMulti.Location = new Point(432, 48);
         btnNameMulti.Name = "btnNameMulti";
         btnNameMulti.Size = new Size(28, 23);
-        btnNameMulti.Text = "\u2261";
         btnNameMulti.TabIndex = 6;
         btnNameMulti.UseVisualStyleBackColor = true;
         tips.SetToolTip(btnNameMulti, "Select multiple file names");
 
-        ConfigureTriState(tsHidden, 462, 48, TriState.Any,
-            "H", "Search all files (hidden and non-hidden)",
-            "H+", "Search only hidden files",
-            "H-", "Search only non-hidden files");
+        ConfigureTriState(tsHidden, Glyph.Eye, 462, 48, TriState.Any,
+            "Search all files (hidden and non-hidden)",
+            "Search only hidden files",
+            "Search only non-hidden files");
         tsHidden.TabIndex = 7;
 
-        ConfigureTriState(tsReadOnly, 492, 48, TriState.Any,
-            "R", "Search all files (read-only and writable)",
-            "R+", "Search only read-only files",
-            "R-", "Search only non-read-only files");
+        ConfigureTriState(tsReadOnly, Glyph.Lock, 492, 48, TriState.Any,
+            "Search all files (read-only and writable)",
+            "Search only read-only files",
+            "Search only non-read-only files");
         tsReadOnly.TabIndex = 8;
 
         // Default is "don't match folders": this is a file search, so folders are noise unless asked for.
-        ConfigureTriState(tsFolders, 522, 48, TriState.No,
-            "F", "Match all (files and folders)",
-            "F+", "Match only folders",
-            "F-", "Do not match folders");
+        ConfigureTriState(tsFolders, Glyph.Folder, 522, 48, TriState.No,
+            "Match all (files and folders)",
+            "Match only folders",
+            "Do not match folders");
         tsFolders.TabIndex = 9;
 
         lblContents.AutoSize = true;
@@ -297,10 +294,10 @@ partial class FindPage
         cmbContents.Size = new Size(334, 23);
         cmbContents.TabIndex = 10;
 
-        ConfigureToggle(chkCase, "Aa", 432, 76, "Case sensitive search");
-        ConfigureToggle(chkWhole, "W", 462, 76, "Whole words only");
-        ConfigureToggle(chkHex, "0x", 492, 76, "Hex (e.g. '12AB3F')");
-        ConfigureToggle(chkRegex, ".*", 522, 76, "Regular expression");
+        ConfigureToggle(chkCase, "Case", 432, 76, "Case sensitive search");
+        ConfigureToggle(chkWhole, "Whole", 462, 76, "Whole words only");
+        ConfigureToggle(chkHex, "Hex", 492, 76, "Hex (e.g. '12AB3F')");
+        ConfigureToggle(chkRegex, "Regex", 522, 76, "Regular expression");
         chkCase.TabIndex = 11;
         chkWhole.TabIndex = 12;
         chkHex.TabIndex = 13;
@@ -562,27 +559,25 @@ partial class FindPage
         page.UseVisualStyleBackColor = true;
     }
 
-    private void ConfigureToggle(CheckBox box, string text, int x, int y, string tip)
+    /// <summary><paramref name="name"/> only names the field; what the button shows is its icon.</summary>
+    private void ConfigureToggle(CheckBox box, string name, int x, int y, string tip)
     {
         box.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         box.Appearance = Appearance.Button;
         box.Location = new Point(x, y);
-        box.Name = "chk" + text;
+        box.Name = "chk" + name;
         box.Size = new Size(28, 23);
-        box.Text = text;
-        box.TextAlign = ContentAlignment.MiddleCenter;
+        box.ImageAlign = ContentAlignment.MiddleCenter;
         box.UseVisualStyleBackColor = true;
         tips.SetToolTip(box, tip);
     }
 
-    private void ConfigureTriState(TriStateButton button, int x, int y, TriState initial,
-                                   string anyLabel, string anyTip,
-                                   string yesLabel, string yesTip,
-                                   string noLabel, string noTip)
+    private void ConfigureTriState(TriStateButton button, Glyph glyph, int x, int y,
+                                   TriState initial, string anyTip, string yesTip, string noTip)
     {
         button.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         button.Location = new Point(x, y);
-        button.Configure(tips, initial, anyLabel, anyTip, yesLabel, yesTip, noLabel, noTip);
+        button.Configure(tips, glyph, initial, anyTip, yesTip, noTip);
     }
 
     private static void ConfigureActionButton(Button button, string text, int y)

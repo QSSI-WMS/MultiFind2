@@ -26,6 +26,6 @@ internal static class Program
 
         MessageBox.Show(
             $"An unexpected error occurred:\n\n{ex.Message}\n\n{ex.GetType().Name}",
-            "MultiFind", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            "MultiFind2", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 }

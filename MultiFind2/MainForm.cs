@@ -15,7 +15,10 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "MultiFind";
+        Text = "MultiFind2";
+        // The exe carries the same icon for Explorer, but a form does not pick that up: without
+        // this the window and its taskbar button show the stock WinForms square.
+        Icon = AppIcon.ForWindow();
         ClientSize = new Size(1280, 820);
         MinimumSize = new Size(1000, 520);
         StartPosition = FormStartPosition.CenterScreen;

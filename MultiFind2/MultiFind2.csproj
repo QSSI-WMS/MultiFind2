@@ -7,11 +7,13 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Generated from AppIcon.cs by the test harness's icons run, not hand-drawn. -->
+    <ApplicationIcon>MultiFind2.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyTitle>MultiFind2</AssemblyTitle>
     <Product>MultiFind2</Product>
     <Company>QSSI-WMS</Company>
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
 </Project>

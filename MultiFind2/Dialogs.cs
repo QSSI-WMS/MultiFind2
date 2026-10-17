@@ -2,7 +2,7 @@ namespace MultiFind2;
 
 internal static class DialogChrome
 {
-    /// <summary>The banded title/subtitle header MultiFind puts at the top of its pickers.</summary>
+    /// <summary>The banded title/subtitle header MultiFind2 puts at the top of its pickers.</summary>
     public static Panel Header(string title, string subtitle, int width)
     {
         var t = Theme.Current;
