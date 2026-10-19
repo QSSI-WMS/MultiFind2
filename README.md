@@ -81,7 +81,8 @@ To produce the single-file executable that ships in the releases:
 
 ```
 dotnet publish MultiFind2/MultiFind2.csproj -c Release -r win-x64 ^
-    --self-contained true -p:PublishSingleFile=true -o publish
+    --self-contained true -p:PublishSingleFile=true ^
+    -p:EnableCompressionInSingleFile=true -o publish
 ```
 
 ## Settings
