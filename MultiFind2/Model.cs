@@ -42,6 +42,10 @@ public sealed class SearchCriteria
     public TriState ReadOnly { get; set; } = TriState.Any;
 
     public bool SkipBinary { get; set; } = true;
+
+    /// <summary>Look inside zip, 7z, rar, gzip and tar files as though they were folders.</summary>
+    public bool SearchArchives { get; set; }
+
     public long MaxContentScanBytes { get; set; } = 256L * 1024 * 1024;
     public int MaxMatches { get; set; }
 
@@ -86,6 +90,7 @@ public sealed class PageState
     public int DateField { get; set; }
 
     public bool SkipBinary { get; set; } = true;
+    public bool SearchArchives { get; set; }
     public TriState Hidden { get; set; } = TriState.Any;
     public TriState ReadOnly { get; set; } = TriState.Any;
     public TriState Folders { get; set; } = TriState.No;
@@ -109,6 +114,18 @@ public sealed class FileMatch
     public required DateTime Created { get; init; }
     public required DateTime Accessed { get; init; }
     public required bool IsFolder { get; init; }
+
+    /// <summary>The archive this row came out of, or null for a file that exists on disk.</summary>
+    public string? ArchivePath { get; init; }
+
+    /// <summary>Where inside <see cref="ArchivePath"/> this entry lives.</summary>
+    public string? EntryKey { get; init; }
+
+    /// <summary>
+    /// A row with no file behind it. It can be read and previewed, but not opened, replaced in,
+    /// or handed to the shell -- <see cref="FullPath"/> names a place that does not exist.
+    /// </summary>
+    public bool IsInArchive => ArchivePath != null;
 
     /// <summary>Substitutions made in this file by the last Replace. Not an init property:
     /// the row already exists when the replace runs, and re-finding would lose the selection.</summary>

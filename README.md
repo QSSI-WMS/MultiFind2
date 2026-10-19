@@ -28,6 +28,9 @@ daily but with three problems that a rewrite could fix:
 - Filter by size range, by date range on created/modified/accessed, and by hidden / read-only /
   folder as three-state toggles (any / only / never)
 - Binary files skipped by default, and reported rather than silently dropped
+- Optionally descend into compressed files — zip, 7z, rar, gzip and tar — treating each archive as
+  a folder, so the name, size, date and content filters all apply to the entries inside it. Off by
+  default, because opening every archive on the way past costs real time.
 
 **Reading the results**
 
@@ -41,6 +44,8 @@ daily but with three problems that a rewrite could fix:
 **Replacing**
 
 - Literal or regular-expression replace across the files found, or only the ones selected
+- Only files on disk are rewritten. Anything found inside a compressed file is left alone and
+  counted in the confirmation, so a replace never has to unpack and rebuild an archive.
 - A preview of what will change before anything is written, and a Replaces count per file
 - Originals are backed up under `%TMP%\MultiFind2\Backups\<page>\<timestamp>\`, mirroring the
   original folder structure, reachable from a **Backups...** button. Runs older than 10 days are
@@ -65,7 +70,8 @@ self-contained — no .NET installation is needed.
 
 ## Build
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). The one dependency is
+[SharpCompress](https://github.com/adamhathcock/sharpcompress) (MIT), which reads the archives.
 
 ```
 dotnet build -c Release

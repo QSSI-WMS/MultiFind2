@@ -165,6 +165,9 @@ public partial class FindPage : UserControl
         StyleToggle(btnSubfolders, highlightWhenChecked: false,
                     on => (on ? Glyph.SubfolderTree : Glyph.FolderOnly, Badge.None));
 
+        // Ships off, so the state worth flagging is the checked one, like the content toggles.
+        StyleToggle(chkArchives, highlightWhenChecked: true, on => (Glyph.Archive, Mark(on)));
+
         static Badge Mark(bool on) => on ? Badge.Check : Badge.None;
 
         foreach (var tri in new[] { tsHidden, tsReadOnly, tsFolders })
@@ -367,6 +370,12 @@ public partial class FindPage : UserControl
             btnSubfolders,
             btnSubfolders.Checked ? "Include subfolders" : "Search this folder only");
 
+        chkArchives.CheckedChanged += (_, _) => tips.SetToolTip(
+            chkArchives,
+            chkArchives.Checked
+                ? "Searching inside compressed files (zip, 7z, rar, gzip, tar)"
+                : "Search inside compressed files (zip, 7z, rar, gzip, tar)");
+
         // Hex and Regex are mutually exclusive content modes.
         chkHex.CheckedChanged += (_, _) => { if (chkHex.Checked) chkRegex.Checked = false; };
         chkRegex.CheckedChanged += (_, _) => { if (chkRegex.Checked) chkHex.Checked = false; };
@@ -376,7 +385,7 @@ public partial class FindPage : UserControl
         lvErrors.RetrieveVirtualItem += OnRetrieveError;
 
         lvFound.ColumnClick += OnFoundColumnClick;
-        lvFound.DoubleClick += (_, _) => ShellOpen(FirstSelectedMatch()?.FullPath);
+        lvFound.DoubleClick += (_, _) => ShellOpen(ShellTarget(FirstSelectedMatch()));
 
         // No ContextMenuStrip: the shell menu is shown by hand so it can be tracked natively.
         // _ownMenu is what gets used when the shell declines -- a row whose file has since been
@@ -527,12 +536,21 @@ public partial class FindPage : UserControl
 
         var selected = SelectedMatches().ToList();
         var scoped = selected.Count > 0;
-        var pool = (scoped ? selected : _matches).Where(m => !m.IsFolder).ToList();
+        var candidates = (scoped ? selected : _matches).Where(m => !m.IsFolder).ToList();
+
+        // Replace only ever rewrites files on disk. Rewriting a file inside an archive would mean
+        // recompressing the archive around it -- a different and far more destructive operation
+        // than the one this button promises -- so those rows are left out.
+        var pool = candidates.Where(m => !m.IsInArchive).ToList();
+        var inArchives = candidates.Count - pool.Count;
         var targets = pool.Select(m => m.FullPath).ToList();
 
         if (targets.Count == 0)
         {
-            Warn("There are no files to replace in.");
+            Warn(inArchives > 0
+                ? $"All {inArchives} file(s) found are inside compressed files.\n\n" +
+                  "Replace only changes files on disk; it never writes into an archive."
+                : "There are no files to replace in.");
             return;
         }
 
@@ -540,7 +558,7 @@ public partial class FindPage : UserControl
         if (backup == BackupChoice.Cancel) return;
 
         var plan = BuildReplacePlan() with { Backup = backup == BackupChoice.Keep ? NewBackupStore() : null };
-        if (!ConfirmReplace(plan, targets.Count, scoped)) return;
+        if (!ConfirmReplace(plan, targets.Count, scoped, inArchives)) return;
 
         CommitHistory();
 
@@ -673,12 +691,15 @@ public partial class FindPage : UserControl
         => new(cmbContents.Text, cmbReplace.Text, chkCase.Checked, chkWhole.Checked,
                chkRegex.Checked, Backup: null);
 
-    private bool ConfirmReplace(ReplacePlan plan, int fileCount, bool scoped)
+    private bool ConfirmReplace(ReplacePlan plan, int fileCount, bool scoped, int inArchives)
     {
         var what = plan.UseRegex ? "the matches of" : plan.WholeWords ? "the whole word" : "";
         var message =
             $"Replace {what} \"{plan.Find}\"\nwith \"{plan.ReplaceWith}\"\n\n" +
             $"in {fileCount} {(scoped ? "selected" : "found")} file(s)?\n\n" +
+            (inArchives > 0
+                ? $"{inArchives} more are inside compressed files and will be left alone.\n\n"
+                : "") +
             (plan.Backup != null
                 ? $"The original of each changed file is copied to a dated folder under %TMP%, " +
                   $"kept for {BackupStore.KeepDays} days and reachable from Backups."
@@ -774,6 +795,7 @@ public partial class FindPage : UserControl
             CaseSensitive = chkCase.Checked,
             WholeWords = chkWhole.Checked,
             SkipBinary = chkSkipBinary.Checked,
+            SearchArchives = chkArchives.Checked,
             ContentMode = chkHex.Checked ? ContentMode.Hex
                         : chkRegex.Checked ? ContentMode.Regex
                         : ContentMode.PlainText,
@@ -888,6 +910,7 @@ public partial class FindPage : UserControl
         txtSizeMin.Clear();
         txtSizeMax.Clear();
         btnSubfolders.Checked = true;
+        chkArchives.Checked = false;
         chkSkipBinary.Checked = true;
         tsHidden.ResetToDefault();
         tsReadOnly.ResetToDefault();
@@ -946,7 +969,7 @@ public partial class FindPage : UserControl
         // Only the visible pane is read. The other is emptied rather than left showing the
         // previous file, and reloads when its tab is selected.
         var whole = ReferenceEquals(tabPreview.SelectedTab, tabFile);
-        var path = selected.FullPath;
+        var file = selected;
         var pattern = _previewPattern;
         var before = (int)numBefore.Value;
         var after = (int)numAfter.Value;
@@ -955,8 +978,8 @@ public partial class FindPage : UserControl
         try
         {
             rows = await Task.Run(() => whole
-                ? PreviewScanner.WholeFile(path, pattern, token)
-                : PreviewScanner.Matches(path, pattern, before, after, token), token);
+                ? PreviewScanner.WholeFile(file, pattern, token)
+                : PreviewScanner.Matches(file, pattern, before, after, token), token);
         }
         catch (OperationCanceledException)
         {
@@ -1103,7 +1126,11 @@ public partial class FindPage : UserControl
     /// </summary>
     private void ShowResultsMenu(Point screen)
     {
-        var paths = SelectedPaths().ToList();
+        // What the shell is given has to exist, so a row from inside an archive stands in for
+        // the archive -- Extract here, Properties and the rest then apply to the file that is
+        // really there. Copy full path still copies the row, which is what it says.
+        var paths = SelectedMatches().Select(m => ShellTarget(m)!)
+                                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (paths.Count == 0) return;
 
         var extra = new (string Text, Action Run)[]
@@ -1130,8 +1157,8 @@ public partial class FindPage : UserControl
     {
         var menu = new ContextMenuStrip { Renderer = new ThemeMenuRenderer() };
         Style(() => { menu.BackColor = CMantle; menu.ForeColor = CText; });
-        menu.Items.Add("&Open", null, (_, _) => ShellOpen(FirstSelectedMatch()?.FullPath));
-        menu.Items.Add("Open file &location", null, (_, _) => OpenLocation(FirstSelectedMatch()?.FullPath));
+        menu.Items.Add("&Open", null, (_, _) => ShellOpen(ShellTarget(FirstSelectedMatch())));
+        menu.Items.Add("Open file &location", null, (_, _) => OpenLocation(ShellTarget(FirstSelectedMatch())));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("&Copy full path", null, (_, _) => CopyToClipboard(SelectedPaths()));
         menu.Items.Add("Copy file &name", null, (_, _) => CopyToClipboard(SelectedMatches().Select(m => m.FileName)));
@@ -1146,6 +1173,12 @@ public partial class FindPage : UserControl
                   .Select(i => _matches[i]);
 
     private IEnumerable<string> SelectedPaths() => SelectedMatches().Select(m => m.FullPath);
+
+    /// <summary>
+    /// The file an Explorer action should act on. For a row inside an archive that is the
+    /// archive itself: its own <see cref="FileMatch.FullPath"/> names a place on no disk.
+    /// </summary>
+    private static string? ShellTarget(FileMatch? match) => match?.ArchivePath ?? match?.FullPath;
 
     /// <summary>
     /// The topmost selected row. Separate from <see cref="SelectedMatches"/> because asking for
@@ -1214,6 +1247,7 @@ public partial class FindPage : UserControl
         ExcludeNames = _excludeNames,
         ExcludeFolders = new List<string>(_excludeFolders),
         Subfolders = btnSubfolders.Checked,
+        SearchArchives = chkArchives.Checked,
         CaseSensitive = chkCase.Checked,
         WholeWords = chkWhole.Checked,
         Hex = chkHex.Checked,
@@ -1247,6 +1281,7 @@ public partial class FindPage : UserControl
         _excludeNames = state.ExcludeNames;
         _excludeFolders = new List<string>(state.ExcludeFolders);
         btnSubfolders.Checked = state.Subfolders;
+        chkArchives.Checked = state.SearchArchives;
         chkCase.Checked = state.CaseSensitive;
         chkWhole.Checked = state.WholeWords;
         chkHex.Checked = state.Hex;

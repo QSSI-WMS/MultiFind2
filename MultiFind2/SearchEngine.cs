@@ -70,6 +70,15 @@ public sealed class SearchEngine
             lastFlush = clock.Elapsed;
         }
 
+        // Records a hit, and answers whether there is room for another.
+        bool Add(FileMatch match)
+        {
+            batch.Matches.Add(match);
+            found++;
+            if (_c.MaxMatches > 0 && found >= _c.MaxMatches) limitHit = true;
+            return !limitHit;
+        }
+
         try
         {
             foreach (var root in _c.SearchPaths)
@@ -115,6 +124,19 @@ public sealed class SearchEngine
 
                         scanned++;
 
+                        // An archive is descended into like a folder, before it is judged as a
+                        // file: the name filter applies to what is inside it, not to the .zip
+                        // itself, exactly as it does not apply to the folders on the way down.
+                        if (!isDir && _c.SearchArchives && _c.FolderMatch != FolderMatch.FoldersOnly
+                            && Archives.IsArchive(entry.Name))
+                        {
+                            foreach (var match in ScanArchive(entry.FullName, batch, token))
+                                if (!Add(match)) break;
+
+                            if (limitHit) break;
+                            Flush(false);
+                        }
+
                         try
                         {
                             if (!Accept(entry, isDir, out var skip, token))
@@ -129,14 +151,7 @@ public sealed class SearchEngine
                             continue;
                         }
 
-                        batch.Matches.Add(ToMatch(entry, isDir));
-                        found++;
-
-                        if (_c.MaxMatches > 0 && found >= _c.MaxMatches)
-                        {
-                            limitHit = true;
-                            break;
-                        }
+                        if (!Add(ToMatch(entry, isDir))) break;
                     }
 
                     Flush(false);
@@ -204,6 +219,95 @@ public sealed class SearchEngine
 
         // Scanning a multi-gigabyte file must still honour Cancel, so the token goes all the way down.
         return _content.Match(entry.FullName, out skipReason, token) == ContentResult.Match;
+    }
+
+    /// <summary>
+    /// The matching files inside one archive. Collected rather than streamed because a broken or
+    /// truncated archive throws part-way through the walk, and what was found before that is
+    /// still worth reporting alongside the error.
+    /// </summary>
+    private List<FileMatch> ScanArchive(string archivePath, SearchBatch batch, CancellationToken token)
+    {
+        var matches = new List<FileMatch>();
+
+        try
+        {
+            foreach (var entry in Archives.Entries(archivePath, token))
+            {
+                var shown = Archives.Display(archivePath, entry.Key);
+
+                if (entry.IsEncrypted)
+                {
+                    batch.Skipped.Add(new SkippedItem(shown, "Entry is encrypted"));
+                    continue;
+                }
+
+                string? skip;
+                try
+                {
+                    if (!AcceptEntry(entry, out skip, token))
+                    {
+                        if (skip != null) batch.Skipped.Add(new SkippedItem(shown, skip));
+                        continue;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    batch.Errors.Add(new ErrorItem(shown, Describe(ex)));
+                    continue;
+                }
+
+                matches.Add(new FileMatch
+                {
+                    FileName = Path.GetFileName(shown),
+                    Folder = Path.GetDirectoryName(shown) ?? archivePath,
+                    Size = Math.Max(0, entry.Size),
+                    // An archive keeps one timestamp per entry, so all three columns show it
+                    // rather than two of them inventing a value.
+                    Modified = entry.Modified,
+                    Created = entry.Modified,
+                    Accessed = entry.Modified,
+                    IsFolder = false,
+                    ArchivePath = archivePath,
+                    EntryKey = entry.Key
+                });
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            // Not a real archive, a format this build cannot read, encrypted headers, truncated:
+            // all of them are one unreadable file among many, the same as a locked folder.
+            batch.Errors.Add(new ErrorItem(archivePath, Describe(ex)));
+        }
+
+        return matches;
+    }
+
+    /// <summary>
+    /// The same filters as <see cref="Accept"/>, against what an archive actually records. There
+    /// are no attributes inside one, so an entry counts as neither hidden nor read-only; asking
+    /// for only those files is therefore asking for files on disk.
+    /// </summary>
+    private bool AcceptEntry(ArchiveEntry entry, out string? skipReason, CancellationToken token)
+    {
+        skipReason = null;
+
+        var name = Path.GetFileName(entry.Key);
+        if (_include.Length > 0 && !_include.Any(r => r.IsMatch(name))) return false;
+        if (_exclude.Length > 0 && _exclude.Any(r => r.IsMatch(name))) return false;
+
+        if (!MatchesTriState(_c.Hidden, false)) return false;
+        if (!MatchesTriState(_c.ReadOnly, false)) return false;
+
+        if (_c.UseDate && (entry.Modified < _c.DateFrom || entry.Modified > _c.DateTo)) return false;
+        if (_c.UseSize && (entry.Size < _c.MinSize || entry.Size > _c.MaxSize)) return false;
+
+        if (!_c.HasContentFilter) return true;
+
+        // Only now are the entry's bytes decompressed: a name-only search never pays for them.
+        using var content = entry.Open();
+        return _content.Match(content, out skipReason, token) == ContentResult.Match;
     }
 
     private static bool MatchesTriState(TriState want, bool actual) => want switch

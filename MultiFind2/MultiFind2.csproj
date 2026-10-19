@@ -16,4 +16,10 @@
     <Version>1.1.0</Version>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Searching inside archives. Covers zip, 7z, gzip, tar and rar in one managed library,
+         with no shell-out to 7z.exe and nothing native to ship. -->
+    <PackageReference Include="SharpCompress" Version="0.50.6" />
+  </ItemGroup>
+
 </Project>

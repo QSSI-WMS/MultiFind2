@@ -76,13 +76,11 @@ public static class PreviewScanner
     /// context around each -- grep's -B and -A. Non-adjacent groups are parted by a separator so
     /// a jump in line numbers is visible rather than merely implied.
     /// </summary>
-    public static List<PreviewRow> Matches(string path, Regex? pattern, int before, int after,
+    public static List<PreviewRow> Matches(FileMatch file, Regex? pattern, int before, int after,
                                            CancellationToken token)
     {
         if (pattern == null)
             return Note("Type something in \"File contents\" to preview the matches.");
-
-        if (Reject(path) is { } reason) return Note(reason);
 
         var rows = new List<PreviewRow>();
         var pending = new Queue<(int Line, string Text)>();
@@ -101,7 +99,10 @@ public static class PreviewScanner
 
         try
         {
-            using var reader = Open(path);
+            using var content = Open(file);
+            if (Reject(content) is { } reason) return Note(reason);
+
+            using var reader = Read(content);
             var number = 0;
 
             while (reader.ReadLine() is { } line)
@@ -149,15 +150,16 @@ public static class PreviewScanner
     }
 
     /// <summary>The whole file, with every hit highlighted wherever it falls.</summary>
-    public static List<PreviewRow> WholeFile(string path, Regex? pattern, CancellationToken token)
+    public static List<PreviewRow> WholeFile(FileMatch file, Regex? pattern, CancellationToken token)
     {
-        if (Reject(path) is { } reason) return Note(reason);
-
         var rows = new List<PreviewRow>();
 
         try
         {
-            using var reader = Open(path);
+            using var content = Open(file);
+            if (Reject(content) is { } reason) return Note(reason);
+
+            using var reader = Read(content);
             var number = 0;
 
             while (reader.ReadLine() is { } line)
@@ -184,21 +186,18 @@ public static class PreviewScanner
         return rows.Count > 0 ? rows : Note("The file is empty.");
     }
 
-    /// <summary>Why this file cannot be previewed, or null if it can.</summary>
-    private static string? Reject(string path)
+    /// <summary>Why this file cannot be previewed, or null if it can. Leaves the stream rewound.</summary>
+    private static string? Reject(Stream content)
     {
-        var info = new FileInfo(path);
-        if (!info.Exists) return "The file no longer exists.";
-        if (info.Length > MaxBytes) return $"The file is larger than {MaxBytes / 1024 / 1024} Mb.";
-        if (LooksBinary(path)) return "The file looks binary.";
-        return null;
+        if (content.Length > MaxBytes) return $"The file is larger than {MaxBytes / 1024 / 1024} Mb.";
+        return LooksBinary(content) ? "The file looks binary." : null;
     }
 
-    private static bool LooksBinary(string path)
+    private static bool LooksBinary(Stream content)
     {
-        using var fs = File.OpenRead(path);
-        var buffer = new byte[Math.Min(BinarySniffBytes, fs.Length)];
-        var read = fs.Read(buffer, 0, buffer.Length);
+        var buffer = new byte[Math.Min(BinarySniffBytes, content.Length)];
+        var read = content.Read(buffer, 0, buffer.Length);
+        content.Position = 0;
 
         // A UTF-16 BOM means those NULs are encoding, not content.
         if (read >= 2 && ((buffer[0] == 0xFF && buffer[1] == 0xFE) || (buffer[0] == 0xFE && buffer[1] == 0xFF)))
@@ -207,10 +206,31 @@ public static class PreviewScanner
         return Array.IndexOf(buffer, (byte)0, 0, read) >= 0;
     }
 
-    private static StreamReader Open(string path)
-        => new(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite,
-                              bufferSize: 64 * 1024, FileOptions.SequentialScan),
-               new UTF8Encoding(false), detectEncodingFromByteOrderMarks: true);
+    /// <summary>
+    /// The bytes behind a result row, wherever they live. A row from inside an archive has no
+    /// file to open, so its entry is decompressed again here -- which is also why the preview
+    /// runs off the UI thread with a debounce in front of it.
+    /// </summary>
+    private static Stream Open(FileMatch file)
+    {
+        if (file.IsInArchive)
+        {
+            if (!File.Exists(file.ArchivePath))
+                throw new FileNotFoundException("The archive no longer exists.");
+
+            return Archives.OpenEntry(file.ArchivePath!, file.EntryKey!);
+        }
+
+        if (!File.Exists(file.FullPath))
+            throw new FileNotFoundException("The file no longer exists.");
+
+        return new FileStream(file.FullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite,
+                              bufferSize: 64 * 1024, FileOptions.SequentialScan);
+    }
+
+    private static StreamReader Read(Stream content)
+        => new(content, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: true,
+               bufferSize: 64 * 1024, leaveOpen: true);
 
     private static List<MatchSpan> Find(Regex? pattern, string line)
     {

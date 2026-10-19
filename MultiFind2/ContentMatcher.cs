@@ -82,27 +82,39 @@ public sealed class ContentMatcher
 
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite,
                                       bufferSize: 64 * 1024, FileOptions.SequentialScan);
+        return Match(fs, out skipReason, token);
+    }
 
-        if (fs.Length > _c.MaxContentScanBytes)
+    /// <summary>
+    /// The same decision against bytes that are already open. <paramref name="content"/> has to be
+    /// seekable: the binary sniff reads the head and rewinds. The stream is left open -- whoever
+    /// produced it owns it.
+    /// </summary>
+    public ContentResult Match(Stream content, out string? skipReason, CancellationToken token)
+    {
+        skipReason = null;
+        if (!_c.HasContentFilter) return ContentResult.Match;
+
+        if (content.Length > _c.MaxContentScanBytes)
         {
             skipReason = "File is too large to scan";
             return ContentResult.Skipped;
         }
-        if (fs.Length == 0) return ContentResult.NoMatch;
+        if (content.Length == 0) return ContentResult.NoMatch;
 
         if (_c.ContentMode == ContentMode.Hex)
-            return ScanBytes(fs, token) ? ContentResult.Match : ContentResult.NoMatch;
+            return ScanBytes(content, token) ? ContentResult.Match : ContentResult.NoMatch;
 
-        if (_c.SkipBinary && LooksBinary(fs))
+        if (_c.SkipBinary && LooksBinary(content))
         {
             skipReason = "File contains a NULL character";
             return ContentResult.Skipped;
         }
 
-        return ScanText(fs, token) ? ContentResult.Match : ContentResult.NoMatch;
+        return ScanText(content, token) ? ContentResult.Match : ContentResult.NoMatch;
     }
 
-    private static bool LooksBinary(FileStream fs)
+    private static bool LooksBinary(Stream fs)
     {
         var len = (int)Math.Min(BinarySniffBytes, fs.Length);
         var buf = new byte[len];
@@ -116,7 +128,7 @@ public sealed class ContentMatcher
         return Array.IndexOf(buf, (byte)0, 0, read) >= 0;
     }
 
-    private bool ScanBytes(FileStream fs, CancellationToken token)
+    private bool ScanBytes(Stream fs, CancellationToken token)
     {
         var overlap = Math.Max(0, _needleBytes.Length - 1);
         var buf = new byte[ChunkBytes + overlap];
@@ -140,11 +152,14 @@ public sealed class ContentMatcher
     private static int IndexOf(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needle)
         => needle.IsEmpty ? -1 : haystack.IndexOf(needle);
 
-    private bool ScanText(FileStream fs, CancellationToken token)
+    private bool ScanText(Stream fs, CancellationToken token)
     {
         // detectEncodingFromByteOrderMarks handles UTF-8/UTF-16LE/UTF-16BE BOMs;
         // UTF8 with throwOnInvalidBytes:false is a safe fallback for ANSI content.
-        using var reader = new StreamReader(fs, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: true);
+        // leaveOpen: the stream belongs to the caller, who may not be done with it.
+        using var reader = new StreamReader(fs, new UTF8Encoding(false),
+                                            detectEncodingFromByteOrderMarks: true,
+                                            bufferSize: 64 * 1024, leaveOpen: true);
 
         var overlap = Math.Max(0, NeedleLength - 1);
         if (_regex != null) overlap = 4096;   // regex needle length is unknown; use a generous window

@@ -14,6 +14,7 @@ partial class FindPage
     private Button btnPathBrowse;
     private Button btnPathMulti;
     private CheckBox btnSubfolders;
+    private CheckBox chkArchives;
 
     private Label lblName;
     private ComboBox cmbName;
@@ -97,6 +98,7 @@ partial class FindPage
         btnPathBrowse = new Button();
         btnPathMulti = new Button();
         btnSubfolders = new CheckBox();
+        chkArchives = new CheckBox();
         lblName = new Label();
         cmbName = new ComboBox();
         btnNameMulti = new Button();
@@ -184,6 +186,7 @@ partial class FindPage
         grpGeneral.Controls.Add(btnPathBrowse);
         grpGeneral.Controls.Add(btnPathMulti);
         grpGeneral.Controls.Add(btnSubfolders);
+        grpGeneral.Controls.Add(chkArchives);
         grpGeneral.Controls.Add(lblName);
         grpGeneral.Controls.Add(cmbName);
         grpGeneral.Controls.Add(btnNameMulti);
@@ -232,18 +235,25 @@ partial class FindPage
         btnPathMulti.UseVisualStyleBackColor = true;
         tips.SetToolTip(btnPathMulti, "Browse for multiple folders");
 
-        // Gap before the subfolder toggle groups the browse actions apart from the mode switch.
+        // The two switches that say how far a search reaches -- down through folders, and down
+        // into archives -- end the row together, on the same four columns the rows below use.
         btnSubfolders.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnSubfolders.Appearance = Appearance.Button;
         btnSubfolders.Checked = true;
         btnSubfolders.CheckState = CheckState.Checked;
-        btnSubfolders.Location = new Point(522, 20);
+        btnSubfolders.Location = new Point(492, 20);
         btnSubfolders.Name = "btnSubfolders";
         btnSubfolders.Size = new Size(28, 23);
         btnSubfolders.ImageAlign = ContentAlignment.MiddleCenter;
         btnSubfolders.TabIndex = 4;
         btnSubfolders.UseVisualStyleBackColor = true;
         tips.SetToolTip(btnSubfolders, "Include subfolders");
+
+        // Off by default: opening every zip on the way past is real work, and a search that did
+        // it unasked would be slower than the one the user thought they had started.
+        ConfigureToggle(chkArchives, "Archives", 522, 20,
+                        "Search inside compressed files (zip, 7z, rar, gzip, tar)");
+        chkArchives.TabIndex = 5;
 
         lblName.AutoSize = true;
         lblName.Location = new Point(8, 52);
@@ -254,13 +264,13 @@ partial class FindPage
         cmbName.Location = new Point(92, 48);
         cmbName.Name = "cmbName";
         cmbName.Size = new Size(334, 23);
-        cmbName.TabIndex = 5;
+        cmbName.TabIndex = 6;
 
         btnNameMulti.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnNameMulti.Location = new Point(432, 48);
         btnNameMulti.Name = "btnNameMulti";
         btnNameMulti.Size = new Size(28, 23);
-        btnNameMulti.TabIndex = 6;
+        btnNameMulti.TabIndex = 7;
         btnNameMulti.UseVisualStyleBackColor = true;
         tips.SetToolTip(btnNameMulti, "Select multiple file names");
 
@@ -268,20 +278,20 @@ partial class FindPage
             "Search all files (hidden and non-hidden)",
             "Search only hidden files",
             "Search only non-hidden files");
-        tsHidden.TabIndex = 7;
+        tsHidden.TabIndex = 8;
 
         ConfigureTriState(tsReadOnly, Glyph.Lock, 492, 48, TriState.Any,
             "Search all files (read-only and writable)",
             "Search only read-only files",
             "Search only non-read-only files");
-        tsReadOnly.TabIndex = 8;
+        tsReadOnly.TabIndex = 9;
 
         // Default is "don't match folders": this is a file search, so folders are noise unless asked for.
         ConfigureTriState(tsFolders, Glyph.Folder, 522, 48, TriState.No,
             "Match all (files and folders)",
             "Match only folders",
             "Do not match folders");
-        tsFolders.TabIndex = 9;
+        tsFolders.TabIndex = 10;
 
         lblContents.AutoSize = true;
         lblContents.Location = new Point(8, 80);
@@ -292,16 +302,16 @@ partial class FindPage
         cmbContents.Location = new Point(92, 76);
         cmbContents.Name = "cmbContents";
         cmbContents.Size = new Size(334, 23);
-        cmbContents.TabIndex = 10;
+        cmbContents.TabIndex = 11;
 
         ConfigureToggle(chkCase, "Case", 432, 76, "Case sensitive search");
         ConfigureToggle(chkWhole, "Whole", 462, 76, "Whole words only");
         ConfigureToggle(chkHex, "Hex", 492, 76, "Hex (e.g. '12AB3F')");
         ConfigureToggle(chkRegex, "Regex", 522, 76, "Regular expression");
-        chkCase.TabIndex = 11;
-        chkWhole.TabIndex = 12;
-        chkHex.TabIndex = 13;
-        chkRegex.TabIndex = 14;
+        chkCase.TabIndex = 12;
+        chkWhole.TabIndex = 13;
+        chkHex.TabIndex = 14;
+        chkRegex.TabIndex = 15;
 
         // Replace sits directly under File contents because that is the text it rewrites;
         // it reads as one sentence, and the pairing makes it obvious what gets substituted.
@@ -311,7 +321,7 @@ partial class FindPage
         // "Replace with:" would run into the combo at this column; the other three rows label
         // themselves in the same 84px gutter, and lining up matters more than the extra word.
         chkReplace.Text = "Replace:";
-        chkReplace.TabIndex = 15;
+        chkReplace.TabIndex = 16;
         chkReplace.UseVisualStyleBackColor = true;
         tips.SetToolTip(chkReplace, "Enable replacing the matched file contents");
 
@@ -319,7 +329,7 @@ partial class FindPage
         cmbReplace.Location = new Point(92, 104);
         cmbReplace.Name = "cmbReplace";
         cmbReplace.Size = new Size(458, 23);
-        cmbReplace.TabIndex = 16;
+        cmbReplace.TabIndex = 17;
         tips.SetToolTip(cmbReplace, "Replacement text. In regex mode $1, $2... expand to captured groups.");
 
         // grpAdvanced

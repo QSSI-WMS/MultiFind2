@@ -26,7 +26,9 @@ public enum Glyph
     /// <summary>The read-only attribute.</summary>
     Lock,
     /// <summary>Folders as search results.</summary>
-    Folder
+    Folder,
+    /// <summary>Look inside compressed files.</summary>
+    Archive
 }
 
 /// <summary>
@@ -174,6 +176,21 @@ public static class Icons
             {
                 using var folder = FolderPath(1.4f, 3.4f, 11.6f);
                 g.DrawPath(pen, folder);
+                break;
+            }
+
+            case Glyph.Archive:
+            {
+                // A parcel: the box, the lid seam across it, and the strap over the seam. The
+                // strap is what separates it from the plain rectangle a folder or a file would
+                // be at this size, so it is cut out of the seam rather than drawn on top of it.
+                using var box = RoundedPath(1.7f, 4.3f, 12.6f, 9.2f, 1.3f);
+                g.DrawPath(pen, box);
+                g.DrawLine(pen, 1.7f, 7.5f, 14.3f, 7.5f);
+
+                using var strap = RoundedPath(6.2f, 4.3f, 3.6f, 4.8f, 0.6f);
+                g.FillPath(cut, strap);
+                g.DrawPath(pen, strap);
                 break;
             }
 
