@@ -219,7 +219,7 @@ public sealed class MainForm : Form
         page.StatusChanged += (s, e) =>
         {
             if (!ReferenceEquals(s, ActivePage)) return;
-            _lblSummary.Text = e.Summary;
+            _lblSummary.Text = Summarize(e);
             _lblElapsed.Text = e.Elapsed;
             _lblState.Text = e.State;
         };
@@ -297,6 +297,41 @@ public sealed class MainForm : Form
     private void SyncStatus()
     {
         _lblSummary.Text = _lblElapsed.Text = _lblState.Text = "";
+    }
+
+    private const string FolderSeparator = "   —   ";
+
+    /// <summary>
+    /// The count, and while a search is running the folder being looked in, which answers the
+    /// question a long search actually raises: not how many have been found, but where it is.
+    /// </summary>
+    private string Summarize(PageStatus status)
+    {
+        if (string.IsNullOrEmpty(status.Folder)) return status.Summary;
+
+        var used = TextRenderer.MeasureText(status.Summary + FolderSeparator, _status.Font).Width;
+        return status.Summary + FolderSeparator + Fit(status.Folder, _lblSummary.Width - used);
+    }
+
+    /// <summary>
+    /// Trims a path from the left to fit the width given. The tail is what says where the search
+    /// has reached, so clipping the end -- which is what the label would do on its own -- would
+    /// throw away the only part worth reading.
+    /// </summary>
+    private string Fit(string path, int room)
+    {
+        if (room <= 0) return "";
+        if (TextRenderer.MeasureText(path, _status.Font).Width <= room) return path;
+
+        var parts = path.Split(Path.DirectorySeparatorChar);
+        for (var skip = 1; skip < parts.Length; skip++)
+        {
+            var shorter = "..." + Path.DirectorySeparatorChar
+                        + string.Join(Path.DirectorySeparatorChar, parts.Skip(skip));
+            if (TextRenderer.MeasureText(shorter, _status.Font).Width <= room) return shorter;
+        }
+
+        return parts[^1];
     }
 
     private void ShowAbout()

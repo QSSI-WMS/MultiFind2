@@ -58,13 +58,17 @@ public sealed class SearchEngine
         var found = 0;
         var scanned = 0;
         var limitHit = false;
+        string? currentFolder = null;
 
         void Flush(bool force)
         {
-            if (batch.IsEmpty && !force) return;
+            // An empty batch is still worth reporting once the interval is up: a long stretch of
+            // folders that match nothing is exactly when the caller most needs to be told where
+            // the search has got to.
             if (!force && batch.Matches.Count < FlushCount && clock.Elapsed - lastFlush < FlushInterval) return;
 
             batch.Scanned = scanned;
+            batch.CurrentFolder = currentFolder;
             progress.Report(batch);
             batch = new SearchBatch();
             lastFlush = clock.Elapsed;
@@ -99,7 +103,7 @@ public sealed class SearchEngine
                     token.ThrowIfCancellationRequested();
 
                     var dir = stack.Pop();
-                    batch.CurrentFolder = dir;
+                    currentFolder = dir;
 
                     List<FileSystemInfo> entries;
                     try
@@ -130,9 +134,17 @@ public sealed class SearchEngine
                         if (!isDir && _c.SearchArchives && _c.FolderMatch != FolderMatch.FoldersOnly
                             && Archives.IsArchive(entry.Name))
                         {
+                            // Named as the place being looked in, because it is. This one is
+                            // reported before the work rather than after, and without waiting for
+                            // the interval: unpacking an archive is the longest a search can go
+                            // without visible progress, which is when a stale folder looks stuck.
+                            currentFolder = entry.FullName;
+                            Flush(true);
+
                             foreach (var match in ScanArchive(entry.FullName, batch, token))
                                 if (!Add(match)) break;
 
+                            currentFolder = dir;
                             if (limitHit) break;
                             Flush(false);
                         }

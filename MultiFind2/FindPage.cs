@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace MultiFind2;
 
-public sealed record PageStatus(string Summary, string Elapsed, string State);
+public sealed record PageStatus(string Summary, string Elapsed, string State, string? Folder = null);
 
 public partial class FindPage : UserControl
 {
@@ -14,6 +14,7 @@ public partial class FindPage : UserControl
 
     private CancellationTokenSource? _cts;
     private bool _running;
+    private string? _currentFolder;
 
     private int _sortColumn = -1;
     private bool _sortAscending = true;
@@ -447,6 +448,7 @@ public partial class FindPage : UserControl
                                      criteria.WholeWords, criteria.ContentMode == ContentMode.Regex);
 
         _cts = new CancellationTokenSource();
+        _currentFolder = null;
         SetRunning(true);
         Report("Searching...", "In progress...");
 
@@ -740,7 +742,8 @@ public partial class FindPage : UserControl
         _errors.AddRange(batch.Errors);
         RefreshCounts();
 
-        if (_running) Report($"{_matches.Count} files found", "In progress...");
+        if (batch.CurrentFolder != null) _currentFolder = batch.CurrentFolder;
+        if (_running) Report($"{_matches.Count} files found", "In progress...", folder: _currentFolder);
     }
 
     private void RefreshCounts()
@@ -763,11 +766,12 @@ public partial class FindPage : UserControl
         list.Invalidate();
     }
 
-    private void Report(string summary, string state, TimeSpan? elapsed = null)
+    private void Report(string summary, string state, TimeSpan? elapsed = null, string? folder = null)
         => StatusChanged?.Invoke(this, new PageStatus(
             summary,
             elapsed is { } e ? $"{e.TotalSeconds:0.0} secs" : "",
-            state));
+            state,
+            folder));
 
     // ------------------------------------------------------------- criteria
 
