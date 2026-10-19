@@ -329,7 +329,7 @@ internal sealed class PreviewList : ListView
         Font = _mono;
 
         RetrieveVirtualItem += OnRetrieve;
-        ThemePainting.AttachList(this, drawText: Draw);
+        ThemePainting.AttachList(this, drawCell: Draw);
     }
 
     public int RowCount => _rows.Count;
@@ -357,23 +357,23 @@ internal sealed class PreviewList : ListView
         e.Item = new ListViewItem(new[] { row.Line > 0 ? row.Line.ToString() : "", row.Text });
     }
 
-    private void Draw(DrawListViewSubItemEventArgs e, Rectangle pad)
+    private void Draw(Graphics g, int itemIndex, int column, Rectangle pad)
     {
         var theme = Theme.Current;
-        var row = Row(e.ItemIndex);
+        var row = Row(itemIndex);
 
         if (row.Kind == PreviewRowKind.Separator)
         {
-            if (e.ColumnIndex != 1) return;
+            if (column != 1) return;
             using var pen = new Pen(theme.Surface1);
             var y = pad.Y + pad.Height / 2;
-            e.Graphics.DrawLine(pen, pad.X, y, pad.X + 48, y);
+            g.DrawLine(pen, pad.X, y, pad.X + 48, y);
             return;
         }
 
-        if (e.ColumnIndex == 0)
+        if (column == 0)
         {
-            TextRenderer.DrawText(e.Graphics, row.Line > 0 ? row.Line.ToString() : "", Font, pad,
+            TextRenderer.DrawText(g, row.Line > 0 ? row.Line.ToString() : "", Font, pad,
                                   theme.Blue, Flags | TextFormatFlags.Right);
             return;
         }
@@ -387,7 +387,7 @@ internal sealed class PreviewList : ListView
 
         if (row.Hits.Count == 0)
         {
-            TextRenderer.DrawText(e.Graphics, row.Text, Font, pad, fore, Flags);
+            TextRenderer.DrawText(g, row.Text, Font, pad, fore, Flags);
             return;
         }
 
@@ -396,15 +396,15 @@ internal sealed class PreviewList : ListView
 
         foreach (var hit in row.Hits)
         {
-            if (hit.Start > at) x = Segment(e.Graphics, row.Text[at..hit.Start], x, pad, fore, null);
-            x = Segment(e.Graphics, row.Text.Substring(hit.Start, hit.Length), x, pad,
+            if (hit.Start > at) x = Segment(g, row.Text[at..hit.Start], x, pad, fore, null);
+            x = Segment(g, row.Text.Substring(hit.Start, hit.Length), x, pad,
                         theme.HighlightText, theme.HighlightBg);
             at = hit.Start + hit.Length;
 
             if (x > pad.Right) return;   // the rest is off the right edge of the column
         }
 
-        if (at < row.Text.Length) Segment(e.Graphics, row.Text[at..], x, pad, fore, null);
+        if (at < row.Text.Length) Segment(g, row.Text[at..], x, pad, fore, null);
     }
 
     /// <summary>Draws one run and returns the x the next one starts at.</summary>

@@ -37,12 +37,13 @@ internal static class ThemePainting
     /// <paramref name="rowTint"/> returns the background for a row (null = plain Base),
     /// <paramref name="sortState"/> reports the sorted column so the arrow can be drawn here --
     /// the native HDF_SORTUP flag is ignored once the header is owner-drawn -- and
-    /// <paramref name="drawText"/> replaces the plain-text pass for lists that paint their own
-    /// content, such as the preview's highlighted source lines.
+    /// <paramref name="drawCell"/> replaces the plain-text pass for lists that paint their own
+    /// content, such as the preview's highlighted source lines. It is handed the row and column
+    /// rather than an event, because cells are painted a whole row at a time.
     /// </summary>
     public static void AttachList(ListView lv, Func<int, Color?>? rowTint = null,
                                   Func<(int Column, bool Ascending)>? sortState = null,
-                                  Action<DrawListViewSubItemEventArgs, Rectangle>? drawText = null)
+                                  Action<Graphics, int, int, Rectangle>? drawCell = null)
     {
         lv.OwnerDraw = true;
 
@@ -69,27 +70,39 @@ internal static class ThemePainting
                 TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         };
 
-        // Details view paints per-subitem; DrawItem only needs to clear the row, including the
-        // dead space to the right of the last column which no subitem covers.
+        // The whole row is painted here, cells included, rather than clearing it and leaving the
+        // text to DrawSubItem. comctl32 does not promise a subitem paint per column: moving the
+        // mouse across a row raises DrawItem and then column 0 alone, and a row losing the
+        // selection raises DrawItem by itself. Either one cleared the row and then filled in
+        // almost none of it, which is how Folder, Size, Modified and Type blanked out under the
+        // mouse. The reverse cannot happen -- a subitem paint only ever follows the item paint
+        // for its row -- so painting here covers every case.
         lv.DrawItem += (_, e) =>
         {
-            using var bg = new SolidBrush(RowColor(lv, e.ItemIndex, e.Item.Selected, rowTint));
-            e.Graphics.FillRectangle(bg, e.Bounds);
-        };
-
-        lv.DrawSubItem += (_, e) =>
-        {
-            var t = Theme.Current;
-            using (var bg = new SolidBrush(RowColor(lv, e.ItemIndex, e.Item?.Selected ?? false, rowTint)))
+            using (var bg = new SolidBrush(RowColor(lv, e.ItemIndex, e.Item.Selected, rowTint)))
                 e.Graphics.FillRectangle(bg, e.Bounds);
 
-            var pad = new Rectangle(e.Bounds.X + 4, e.Bounds.Y, e.Bounds.Width - 8, e.Bounds.Height);
-            if (drawText != null) { drawText(e, pad); return; }
-
-            TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? "", lv.Font, pad, t.Text,
-                Align(lv.Columns[e.ColumnIndex].TextAlign) |
-                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            var x = e.Bounds.X;
+            for (var col = 0; col < lv.Columns.Count; col++)
+            {
+                var width = lv.Columns[col].Width;
+                if (width > 0)
+                    Cell(e.Graphics, new Rectangle(x, e.Bounds.Y, width, e.Bounds.Height),
+                         e.Item, e.ItemIndex, col);
+                x += width;
+            }
         };
+
+        void Cell(Graphics g, Rectangle bounds, ListViewItem? item, int itemIndex, int column)
+        {
+            var pad = new Rectangle(bounds.X + 4, bounds.Y, bounds.Width - 8, bounds.Height);
+            if (drawCell != null) { drawCell(g, itemIndex, column, pad); return; }
+
+            var text = item != null && column < item.SubItems.Count ? item.SubItems[column].Text : "";
+            TextRenderer.DrawText(g, text, lv.Font, pad, Theme.Current.Text,
+                Align(lv.Columns[column].TextAlign) |
+                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        }
     }
 
     static Color RowColor(ListView lv, int index, bool selected, Func<int, Color?>? rowTint)
