@@ -761,8 +761,26 @@ public partial class FindPage : UserControl
 
     private static void SetVirtualSize(ListView list, int count)
     {
-        if (list.VirtualListSize == count) return;
+        var previous = list.VirtualListSize;
+        if (previous == count) return;
+
         list.VirtualListSize = count;
+
+        // The viewport does not follow the list when it shrinks, and emptying it does not bring
+        // the viewport home either. A long search followed by a short one therefore leaves it
+        // parked thousands of rows past the last result: the count says 43 and the list looks
+        // empty. Only on a fresh or shrinking list -- scrolling during a search is the user's
+        // business, and batches arrive several times a second.
+        // Going to the last row before the first is not redundant: asked to show row 0 from far
+        // below the end of a list that has just shrunk, the control scrolls to a position it has
+        // already clamped and leaves row 0 at the bottom edge. Landing on a valid row first gives
+        // it a sane offset to scroll from.
+        if (count > 0 && list.IsHandleCreated && (previous == 0 || count < previous))
+        {
+            list.EnsureVisible(count - 1);
+            list.EnsureVisible(0);
+        }
+
         list.Invalidate();
     }
 
