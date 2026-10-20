@@ -37,7 +37,10 @@ daily but with three problems that a rewrite could fix:
 - Virtual-mode list, so a result set of hundreds of thousands of rows stays responsive
 - Sortable on every column, including a real Modified timestamp
 - A preview pane showing each matching line with the hits highlighted, with grep-style `-A`/`-B`
-  context line counts
+  context line counts. It opens on the first hit, scrolling sideways if the match sits far along
+  a long line
+- Text can be dragged out of the preview and copied with Ctrl+C; double-click takes a word,
+  Ctrl+A the lot
 - Explorer's own right-click menu on the selected rows: Open with, Send to, 7-Zip, TortoiseGit,
   Properties and whatever else is installed
 

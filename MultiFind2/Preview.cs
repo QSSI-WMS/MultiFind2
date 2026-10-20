@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -301,6 +302,13 @@ public static class PreviewScanner
 /// </summary>
 internal sealed class PreviewList : ListView
 {
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    private const int LVM_SCROLL = 0x1014;
+    private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_LBUTTONDBLCLK = 0x0203;
+
     private const TextFormatFlags Flags = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix |
                                           TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine;
 
@@ -308,6 +316,12 @@ internal sealed class PreviewList : ListView
 
     private List<PreviewRow> _rows = new();
     private readonly Font _mono = new("Consolas", 9f);
+
+    // Where the text selection starts and where the drag has got to, as row plus character
+    // offset into that row's text. -1 means there is no selection.
+    private int _anchorRow = -1, _anchorCol, _caretRow = -1, _caretCol;
+    private bool _dragging;
+    private int _charWidth;
 
     public PreviewList()
     {
@@ -330,6 +344,39 @@ internal sealed class PreviewList : ListView
 
         RetrieveVirtualItem += OnRetrieve;
         ThemePainting.AttachList(this, drawCell: Draw);
+
+        ContextMenuStrip = BuildMenu();
+    }
+
+    private ContextMenuStrip BuildMenu()
+    {
+        var menu = new ContextMenuStrip { Renderer = new ThemeMenuRenderer() };
+        var copy = new ToolStripMenuItem("&Copy", null, (_, _) => Copy())
+        {
+            ShortcutKeyDisplayString = "Ctrl+C"
+        };
+        menu.Items.Add(copy);
+        menu.Items.Add("Select &all", null, (_, _) => SelectAllText());
+        menu.Opening += (_, _) => copy.Enabled = SelectedText().Length > 0;
+        return menu;
+    }
+
+    /// <summary>
+    /// The advance of one character. The pane is fixed-pitch -- the tab expansion in
+    /// <see cref="PreviewScanner"/> already depends on that -- so a single number places every
+    /// column, and hit testing and the selection band both come down to a multiplication.
+    /// </summary>
+    private int CharWidth
+    {
+        get
+        {
+            if (_charWidth > 0) return _charWidth;
+
+            using var g = CreateGraphics();
+            var ruler = TextRenderer.MeasureText(g, new string('0', 32), Font,
+                                                 new Size(int.MaxValue, Height), Flags).Width;
+            return _charWidth = Math.Max(1, ruler / 32);
+        }
     }
 
     public int RowCount => _rows.Count;
@@ -340,12 +387,41 @@ internal sealed class PreviewList : ListView
     {
         // Virtual mode keeps indices that the new, shorter list may not have.
         SelectedIndices.Clear();
+        ClearTextSelection();
         _rows = rows;
         VirtualListSize = rows.Count;
 
-        // Back to the top: the row that was on screen belonged to the previous file.
-        if (rows.Count > 0 && IsHandleCreated) EnsureVisible(0);
+        if (rows.Count > 0 && IsHandleCreated) ShowFirstHit();
         Invalidate();
+    }
+
+    /// <summary>
+    /// Opens on the first highlighted hit rather than on line 1. With context lines switched on
+    /// the top row is usually a plain line ahead of the match, and on a long line the hit can sit
+    /// well off the right edge of the pane, so this scrolls both ways.
+    /// </summary>
+    private void ShowFirstHit()
+    {
+        var row = _rows.FindIndex(r => r.Hits.Count > 0);
+        EnsureVisible(row < 0 ? 0 : row);
+
+        if (row < 0) { ScrollTo(0); return; }
+
+        var hit = _rows[row].Hits[0];
+        var gutter = Columns[0].Width + 4;
+        var start = gutter + hit.Start * CharWidth;
+        var end = start + hit.Length * CharWidth;
+
+        // Only scroll sideways when the hit genuinely does not fit, and when it does not, keep a
+        // few characters of the line ahead of it in view so the match is not flush to the gutter.
+        ScrollTo(end <= ClientSize.Width ? 0 : Math.Max(0, start - gutter - 8 * CharWidth));
+    }
+
+    /// <summary>Scrolls so that <paramref name="offset"/> pixels of the line sit off to the left.</summary>
+    private void ScrollTo(int offset)
+    {
+        var now = VirtualListSize > 0 ? -Items[0].Bounds.X : 0;
+        if (offset != now) SendMessage(Handle, LVM_SCROLL, (IntPtr)(offset - now), IntPtr.Zero);
     }
 
     public void Clear(string? note = null)
@@ -378,6 +454,12 @@ internal sealed class PreviewList : ListView
             return;
         }
 
+        Line(g, row, pad, theme);
+        Band(g, itemIndex, pad, theme);
+    }
+
+    private void Line(Graphics g, PreviewRow row, Rectangle pad, Theme theme)
+    {
         var fore = row.Kind switch
         {
             PreviewRowKind.Context => theme.Subtext,
@@ -407,6 +489,195 @@ internal sealed class PreviewList : ListView
         if (at < row.Text.Length) Segment(g, row.Text[at..], x, pad, fore, null);
     }
 
+    /// <summary>
+    /// The text selection, drawn over the line rather than behind it. A band underneath would
+    /// have to repaint every run in selection colours and would swallow the highlighter; a
+    /// translucent one leaves both the characters and the hits they sit on readable.
+    /// </summary>
+    private void Band(Graphics g, int itemIndex, Rectangle pad, Theme theme)
+    {
+        var (from, to) = SelectionOn(itemIndex);
+        if (to <= from) return;
+
+        using var brush = new SolidBrush(Color.FromArgb(110, theme.Blue));
+        g.FillRectangle(brush, new Rectangle(pad.X + from * CharWidth, pad.Y,
+                                             (to - from) * CharWidth, pad.Height));
+    }
+
+    // ------------------------------------------------------------- selecting text
+
+    /// <summary>The two ends of the selection in reading order.</summary>
+    private (int Row, int Col, int EndRow, int EndCol) Ordered()
+        => _anchorRow < _caretRow || (_anchorRow == _caretRow && _anchorCol <= _caretCol)
+            ? (_anchorRow, _anchorCol, _caretRow, _caretCol)
+            : (_caretRow, _caretCol, _anchorRow, _anchorCol);
+
+    /// <summary>
+    /// The character range of <paramref name="row"/> that is selected. An empty range (To not
+    /// greater than From) means none of it is.
+    /// </summary>
+    private (int From, int To) SelectionOn(int row)
+    {
+        if (_anchorRow < 0 || _caretRow < 0) return (0, 0);
+
+        var (first, from, last, to) = Ordered();
+        if (row < first || row > last) return (0, 0);
+        if (first == last) return (from, to);
+
+        // A whole line that is followed by more selected lines runs one character long, so the
+        // line break it carries is visible rather than merely implied by the next row.
+        var end = Row(row).Text.Length + 1;
+        if (row == first) return (from, end);
+        return row == last ? (0, to) : (0, end);
+    }
+
+    public string SelectedText()
+    {
+        if (_anchorRow < 0 || _caretRow < 0) return "";
+
+        var (first, from, last, to) = Ordered();
+        var text = new StringBuilder();
+
+        for (var row = first; row <= last; row++)
+        {
+            var line = Row(row).Text;
+            var start = row == first ? Math.Min(from, line.Length) : 0;
+            var stop = row == last ? Math.Min(to, line.Length) : line.Length;
+
+            if (stop > start) text.Append(line, start, stop - start);
+            if (row < last) text.AppendLine();
+        }
+
+        return text.ToString();
+    }
+
+    private void ClearTextSelection()
+    {
+        _anchorRow = _caretRow = -1;
+        _anchorCol = _caretCol = 0;
+    }
+
+    private void SelectAllText()
+    {
+        if (VirtualListSize == 0) return;
+
+        _anchorRow = 0;
+        _anchorCol = 0;
+        _caretRow = VirtualListSize - 1;
+        _caretCol = Row(_caretRow).Text.Length;
+        Invalidate();
+    }
+
+    private void Copy()
+    {
+        var text = SelectedText();
+        if (text.Length > 0) Clipboard.SetText(text);
+    }
+
+    /// <summary>The row under <paramref name="y"/>, clamped to the list so that dragging past
+    /// either edge keeps extending the selection instead of stalling.</summary>
+    private int RowAt(int y)
+    {
+        if (VirtualListSize == 0) return -1;
+
+        // Probe just inside the left edge of the pane. Rows are full-row select and span the whole
+        // scrollable width, so this lands on the row whatever the sideways scroll -- whereas a
+        // probe at the row's own origin would be off screen to the left once scrolled.
+        var item = GetItemAt(2, Math.Clamp(y, 0, Math.Max(0, ClientSize.Height - 1)));
+
+        if (item != null) return item.Index;
+        return y <= 0 ? 0 : VirtualListSize - 1;
+    }
+
+    /// <summary>The character offset under <paramref name="x"/>, rounded so that the caret lands
+    /// on whichever side of the character the click was nearer to.</summary>
+    private int ColAt(int row, int x)
+    {
+        var left = Items[row].Bounds.X + Columns[0].Width + 4;
+        var col = (int)Math.Round((x - left) / (double)CharWidth);
+        return Math.Clamp(col, 0, Row(row).Text.Length);
+    }
+
+    private static bool PartOfWord(char c) => char.IsLetterOrDigit(c) || c == '_';
+
+    private void SelectWord(int row, int at)
+    {
+        var line = Row(row).Text;
+        if (line.Length == 0) return;
+
+        var i = Math.Min(at, line.Length - 1);
+        if (!PartOfWord(line[i])) return;
+
+        var start = i;
+        while (start > 0 && PartOfWord(line[start - 1])) start--;
+        var stop = i;
+        while (stop < line.Length && PartOfWord(line[stop])) stop++;
+
+        _anchorCol = start;
+        _caretCol = stop;
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        // Taken before comctl32 sees it: left-dragging a list view means rubber-band row
+        // selection, which is not what dragging across text is asking for any more.
+        if (m.Msg is WM_LBUTTONDOWN or WM_LBUTTONDBLCLK)
+        {
+            if (!Focused) Focus();
+
+            var lp = (int)m.LParam;
+            var row = RowAt(unchecked((short)(lp >> 16)));
+
+            if (row >= 0)
+            {
+                _anchorRow = _caretRow = row;
+                _anchorCol = _caretCol = ColAt(row, unchecked((short)lp));
+                if (m.Msg == WM_LBUTTONDBLCLK) SelectWord(row, _anchorCol);
+
+                _dragging = true;
+                Capture = true;
+                Invalidate();
+            }
+            return;
+        }
+
+        base.WndProc(ref m);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (!_dragging) return;
+
+        var row = RowAt(e.Y);
+        if (row < 0) return;
+
+        _caretRow = row;
+        _caretCol = ColAt(row, e.X);
+        EnsureVisible(row);   // dragging past the top or bottom scrolls, since RowAt clamps
+        Invalidate();
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        if (_dragging)
+        {
+            _dragging = false;
+            Capture = false;
+        }
+        base.OnMouseUp(e);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Control && e.KeyCode == Keys.C) Copy();
+        else if (e.Control && e.KeyCode == Keys.A) SelectAllText();
+        else if (e.KeyCode == Keys.Escape && _anchorRow >= 0) { ClearTextSelection(); Invalidate(); }
+        else { base.OnKeyDown(e); return; }
+
+        e.Handled = e.SuppressKeyPress = true;
+    }
+
     /// <summary>Draws one run and returns the x the next one starts at.</summary>
     private int Segment(Graphics g, string text, int x, Rectangle pad, Color fore, Color? back)
     {
@@ -427,7 +698,11 @@ internal sealed class PreviewList : ListView
 
     protected override void Dispose(bool disposing)
     {
+        var menu = ContextMenuStrip;
         base.Dispose(disposing);
-        if (disposing) _mono.Dispose();
+
+        if (!disposing) return;
+        _mono.Dispose();
+        menu?.Dispose();
     }
 }
