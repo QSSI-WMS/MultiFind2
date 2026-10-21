@@ -740,6 +740,11 @@ public partial class FindPage : UserControl
         _matches.AddRange(batch.Matches);
         _skipped.AddRange(batch.Skipped);
         _errors.AddRange(batch.Errors);
+
+        // A chosen order has to survive the next batch, or clicking a header during a long search
+        // appears to do nothing: the rows jump back to discovery order as soon as more arrive.
+        if (_sortColumn >= 0) ApplySort();
+
         RefreshCounts();
 
         if (batch.CurrentFolder != null) _currentFolder = batch.CurrentFolder;
@@ -1095,8 +1100,6 @@ public partial class FindPage : UserControl
 
     private void OnFoundColumnClick(object? sender, ColumnClickEventArgs e)
     {
-        if (_running) return;   // the backing list is being appended to
-
         // The trailing filler column owns the header's dead space; it carries no data to sort by.
         if (lvFound.IsFiller(e.Column)) return;
 
@@ -1122,18 +1125,16 @@ public partial class FindPage : UserControl
             _ => (_, _) => 0
         };
 
-        // Stable, and ties fall back to full path so equal timestamps keep a predictable order.
-        var ordered = _matches
-            .OrderBy(x => x, Comparer<FileMatch>.Create((a, b) =>
-            {
-                var cmp = comparison(a, b);
-                if (cmp == 0) cmp = string.Compare(a.FullPath, b.FullPath, StringComparison.OrdinalIgnoreCase);
-                return _sortAscending ? cmp : -cmp;
-            }))
-            .ToList();
-
-        _matches.Clear();
-        _matches.AddRange(ordered);
+        // Ties fall back to full path, so equal sizes or timestamps still have one definite order.
+        // That makes the comparison a total order, which is what lets this sort in place: Sort is
+        // not stable, but with no ties left there is nothing for stability to decide. In place
+        // matters because this now runs on every batch of a running search, not once at the end.
+        _matches.Sort((a, b) =>
+        {
+            var cmp = comparison(a, b);
+            if (cmp == 0) cmp = string.Compare(a.FullPath, b.FullPath, StringComparison.OrdinalIgnoreCase);
+            return _sortAscending ? cmp : -cmp;
+        });
 
         // The header is owner-drawn now, so the arrow comes from _sortColumn/_sortAscending;
         // Refresh repaints the header child window as well as the rows.

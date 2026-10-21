@@ -35,7 +35,8 @@ daily but with three problems that a rewrite could fix:
 **Reading the results**
 
 - Virtual-mode list, so a result set of hundreds of thousands of rows stays responsive
-- Sortable on every column, including a real Modified timestamp
+- Sortable on every column, including a real Modified timestamp. The header can be clicked while a
+  search is still running, and the order chosen then holds as results keep arriving
 - A preview pane showing each matching line with the hits highlighted, with grep-style `-A`/`-B`
   context line counts. It opens on the first hit, scrolling sideways if the match sits far along
   a long line
