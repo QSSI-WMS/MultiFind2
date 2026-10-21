@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
@@ -1248,6 +1249,13 @@ public partial class FindPage : UserControl
         try
         {
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Win32Exception)
+        {
+            // ShellExecuteEx fails when the file association is missing or broken.
+            // Fall back to explorer.exe, which shows an "Open with" dialog instead.
+            try { Process.Start("explorer.exe", $"\"{path}\""); }
+            catch (Exception ex) { MessageBox.Show(this, ex.Message, "File open error", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         }
         catch (Exception ex)
         {
