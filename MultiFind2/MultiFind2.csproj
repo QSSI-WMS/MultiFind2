@@ -13,7 +13,7 @@
     <AssemblyTitle>MultiFind2</AssemblyTitle>
     <Product>MultiFind2</Product>
     <Company>QSSI-WMS</Company>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
