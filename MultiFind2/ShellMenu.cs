@@ -130,6 +130,53 @@ internal static class ShellMenu
         }
     }
 
+    /// <summary>
+    /// Opens Explorer on the folder holding the first path, with that file and every other
+    /// selected file in the same folder highlighted.
+    ///
+    /// One window, however many rows were picked. A result set routinely spans hundreds of
+    /// folders, and <c>explorer /select</c> -- which takes a single file -- would mean a window
+    /// each. Showing where the file the user was looking at lives is the point of the command;
+    /// the rest of the selection comes along when it happens to live there too.
+    /// </summary>
+    public static void Reveal(IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0) return;
+
+        var folder = Path.GetDirectoryName(paths[0]);
+        if (string.IsNullOrEmpty(folder)) return;
+
+        var pidls = new List<IntPtr>();
+        var parent = IntPtr.Zero;
+
+        try
+        {
+            if (SHParseDisplayName(folder, IntPtr.Zero, out parent, 0, out _) != 0 || parent == IntPtr.Zero)
+                return;
+
+            foreach (var path in paths)
+            {
+                if (pidls.Count == MaxItems) break;
+                if (!string.Equals(Path.GetDirectoryName(path), folder, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (SHParseDisplayName(path, IntPtr.Zero, out var pidl, 0, out _) == 0 && pidl != IntPtr.Zero)
+                    pidls.Add(pidl);
+            }
+
+            var items = pidls.ToArray();
+            SHOpenFolderAndSelectItems(parent, (uint)items.Length, items, 0);
+        }
+        catch (COMException)
+        {
+            // Explorer not coming up is not worth an error box over.
+        }
+        finally
+        {
+            if (parent != IntPtr.Zero) Marshal.FreeCoTaskMem(parent);
+            foreach (var pidl in pidls) Marshal.FreeCoTaskMem(pidl);
+        }
+    }
+
     static void Invoke(IContextMenu menu, int command, IntPtr owner)
     {
         // The verb is the command's offset, passed in the low word of a pointer -- the shell's
@@ -273,6 +320,10 @@ internal static class ShellMenu
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     static extern int SHParseDisplayName(string name, IntPtr bindContext, out IntPtr pidl,
                                          uint sfgaoIn, out uint sfgaoOut);
+
+    [DllImport("shell32.dll")]
+    static extern int SHOpenFolderAndSelectItems(IntPtr folder, uint count,
+        [In, MarshalAs(UnmanagedType.LPArray)] IntPtr[] items, uint flags);
 
     [DllImport("shell32.dll")]
     static extern int SHCreateShellItemArrayFromIDLists(uint count,

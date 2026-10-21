@@ -1158,6 +1158,7 @@ public partial class FindPage : UserControl
 
         var extra = new (string Text, Action Run)[]
         {
+            ("Show in Explorer", () => ShellMenu.Reveal(paths)),
             ("Copy full path", () => CopyToClipboard(paths)),
             ("Copy file name", () => CopyToClipboard(SelectedMatches().Select(m => m.FileName))),
             ("Select all rows", SelectAllResults)
@@ -1181,7 +1182,7 @@ public partial class FindPage : UserControl
         var menu = new ContextMenuStrip { Renderer = new ThemeMenuRenderer() };
         Style(() => { menu.BackColor = CMantle; menu.ForeColor = CText; });
         menu.Items.Add("&Open", null, (_, _) => ShellOpen(ShellTarget(FirstSelectedMatch())));
-        menu.Items.Add("Open file &location", null, (_, _) => OpenLocation(ShellTarget(FirstSelectedMatch())));
+        menu.Items.Add("Show in &Explorer", null, (_, _) => ShellMenu.Reveal(SelectedShellTargets()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("&Copy full path", null, (_, _) => CopyToClipboard(SelectedPaths()));
         menu.Items.Add("Copy file &name", null, (_, _) => CopyToClipboard(SelectedMatches().Select(m => m.FileName)));
@@ -1202,6 +1203,16 @@ public partial class FindPage : UserControl
     /// archive itself: its own <see cref="FileMatch.FullPath"/> names a place on no disk.
     /// </summary>
     private static string? ShellTarget(FileMatch? match) => match?.ArchivePath ?? match?.FullPath;
+
+    /// <summary>
+    /// The selected rows as files Explorer can act on. Capped, because this menu is the one that
+    /// appears when the shell declined the selection -- which is what a Select All over a few
+    /// hundred thousand results produces -- and no window needs that many items highlighted.
+    /// </summary>
+    private List<string> SelectedShellTargets()
+        => SelectedMatches().Select(m => ShellTarget(m)!)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .Take(1000).ToList();
 
     /// <summary>
     /// The topmost selected row. Separate from <see cref="SelectedMatches"/> because asking for
@@ -1237,19 +1248,6 @@ public partial class FindPage : UserControl
         try
         {
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ex.Message, "File open error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-    }
-
-    private void OpenLocation(string? path)
-    {
-        if (path == null) return;
-        try
-        {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
         }
         catch (Exception ex)
         {

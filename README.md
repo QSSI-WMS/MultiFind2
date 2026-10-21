@@ -44,6 +44,8 @@ daily but with three problems that a rewrite could fix:
   Ctrl+A the lot
 - Explorer's own right-click menu on the selected rows: Open with, Send to, 7-Zip, TortoiseGit,
   Properties and whatever else is installed
+- **Show in Explorer** on that menu, opening a single window with the selected files highlighted
+  however many rows were picked
 
 **Replacing**
 
