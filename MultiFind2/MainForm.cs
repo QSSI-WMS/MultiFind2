@@ -15,9 +15,6 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        AutoScaleMode = AutoScaleMode.Dpi;
-
         Text = "MultiFind2";
         // The exe carries the same icon for Explorer, but a form does not pick that up: without
         // this the window and its taskbar button show the stock WinForms square.
@@ -25,6 +22,8 @@ public sealed class MainForm : Form
         ClientSize = new Size(1280, 820);
         MinimumSize = new Size(1000, 520);
         StartPosition = FormStartPosition.CenterScreen;
+
+        SuspendLayout();
 
         Theme.Current = Theme.Resolve(_settings.Theme);
 
@@ -41,6 +40,10 @@ public sealed class MainForm : Form
         PopulateThemeCombo();
 
         RestorePages();
+
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        ResumeLayout(true);
     }
 
     /// <summary>Brings back last session's tabs. Criteria only -- results would be stale.</summary>

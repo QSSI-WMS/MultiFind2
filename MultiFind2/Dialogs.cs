@@ -6,34 +6,43 @@ internal static class DialogChrome
     public static Panel Header(string title, string subtitle, int width)
     {
         var t = Theme.Current;
-        var panel = new Panel
-        {
-            BackColor = t.Mantle,
-            Location = new Point(0, 0),
-            Size = new Size(width, 56)
-        };
 
-        panel.Controls.Add(new Label
+        var titleLabel = new Label
         {
             Text = title,
             AutoSize = true,
             Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 10.5f, FontStyle.Bold),
             ForeColor = t.Blue,
             Location = new Point(16, 8)
-        });
+        };
 
-        panel.Controls.Add(new Label
+        // Position the subtitle below the title using the actual rendered height,
+        // so the two lines never overlap regardless of DPI.
+        int subtitleY = 8 + titleLabel.PreferredHeight + 2;
+
+        var subtitleLabel = new Label
         {
             Text = subtitle,
             AutoSize = true,
             ForeColor = t.Subtext,
-            Location = new Point(18, 30)
-        });
+            Location = new Point(18, subtitleY)
+        };
 
+        int panelH = subtitleY + subtitleLabel.PreferredHeight + 6;
+
+        var panel = new Panel
+        {
+            BackColor = t.Mantle,
+            Location = new Point(0, 0),
+            Size = new Size(width, panelH)
+        };
+
+        panel.Controls.Add(titleLabel);
+        panel.Controls.Add(subtitleLabel);
         panel.Controls.Add(new Panel
         {
             BackColor = t.Surface1,
-            Location = new Point(0, 55),
+            Location = new Point(0, panelH - 1),
             Size = new Size(width, 1)
         });
 
@@ -98,9 +107,6 @@ public sealed class FolderListDialog : Form
 
     public FolderListDialog(IEnumerable<string> include, IEnumerable<string> exclude)
     {
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        AutoScaleMode = AutoScaleMode.Dpi;
-
         Text = "Browse for multiple folders";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
@@ -138,6 +144,8 @@ public sealed class FolderListDialog : Form
         AcceptButton = ok;
         CancelButton = cancel;
 
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
         ResumeLayout(true);
     }
 
@@ -170,9 +178,6 @@ public sealed class FileNameListDialog : Form
 
     public FileNameListDialog(IEnumerable<string> include, IEnumerable<string> exclude)
     {
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        AutoScaleMode = AutoScaleMode.Dpi;
-
         Text = "Select multiple file names";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
@@ -202,6 +207,8 @@ public sealed class FileNameListDialog : Form
         AcceptButton = ok;
         CancelButton = cancel;
 
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
         ResumeLayout(true);
     }
 }
