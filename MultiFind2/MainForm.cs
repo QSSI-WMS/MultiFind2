@@ -15,6 +15,9 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+
         Text = "MultiFind2";
         // The exe carries the same icon for Explorer, but a form does not pick that up: without
         // this the window and its taskbar button show the stock WinForms square.
@@ -341,6 +344,13 @@ public sealed class MainForm : Form
             "Modified column shows date and time, and sorts chronologically.\n" +
             "Cancel stops a running search with a single click.",
             "About", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        base.OnDpiChanged(e);
+        float scale = e.DeviceDpiNew / 96f;
+        MinimumSize = new Size((int)(1000 * scale), (int)(520 * scale));
+    }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {

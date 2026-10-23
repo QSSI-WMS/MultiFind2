@@ -521,6 +521,8 @@ partial class FindPage
         pnlTop.Dock = DockStyle.Top;
 
         // FindPage
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
         Controls.Add(splitResults);
         Controls.Add(pnlTop);
         Name = "FindPage";

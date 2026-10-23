@@ -98,12 +98,17 @@ public sealed class FolderListDialog : Form
 
     public FolderListDialog(IEnumerable<string> include, IEnumerable<string> exclude)
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+
         Text = "Browse for multiple folders";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = MaximizeBox = false;
         ShowInTaskbar = false;
         ClientSize = new Size(560, 400);
+
+        SuspendLayout();
 
         _include = DialogChrome.ListBox(12, 88, 420, 110);
         _exclude = DialogChrome.ListBox(12, 232, 420, 110);
@@ -132,6 +137,8 @@ public sealed class FolderListDialog : Form
 
         AcceptButton = ok;
         CancelButton = cancel;
+
+        ResumeLayout(true);
     }
 
     private void AppendFolder(TextBox target)
@@ -163,12 +170,17 @@ public sealed class FileNameListDialog : Form
 
     public FileNameListDialog(IEnumerable<string> include, IEnumerable<string> exclude)
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+
         Text = "Select multiple file names";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = MaximizeBox = false;
         ShowInTaskbar = false;
         ClientSize = new Size(520, 330);
+
+        SuspendLayout();
 
         _include = DialogChrome.ListBox(12, 88, 240, 180);
         _exclude = DialogChrome.ListBox(268, 88, 240, 180);
@@ -189,5 +201,7 @@ public sealed class FileNameListDialog : Form
 
         AcceptButton = ok;
         CancelButton = cancel;
+
+        ResumeLayout(true);
     }
 }
