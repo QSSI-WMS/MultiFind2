@@ -80,6 +80,8 @@ partial class FindPage
         {
             components?.Dispose();
             _previewTimer.Dispose();
+            _suggestTimer.Dispose();
+            _pathPopup?.Dispose();
             _previewCts?.Cancel();
             _previewCts?.Dispose();
         }

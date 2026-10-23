@@ -26,6 +26,10 @@ public partial class FindPage : UserControl
     /// <summary>Only built if the shell ever declines to produce a menu, which it rarely does.</summary>
     private ContextMenuStrip? _ownMenu;
 
+    private PathSuggestPopup? _pathPopup;
+    private bool _suppressSuggest;
+    private readonly System.Windows.Forms.Timer _suggestTimer = new() { Interval = 100 };
+
     /// <summary>What the preview highlights: the search text after a Find, the replacement text
     /// after a Replace, so the pane always shows the result of whatever just ran.</summary>
     private Regex? _previewPattern;
@@ -417,9 +421,64 @@ public partial class FindPage : UserControl
             combo.KeyDown += (s, e) =>
             {
                 if (e.KeyCode != Keys.Enter) return;
+                // If the path popup is open, Enter accepts the suggestion instead of searching.
+                if (s == cmbPath && _pathPopup?.IsOpen == true)
+                {
+                    _pathPopup.AcceptCurrent();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    return;
+                }
                 e.SuppressKeyPress = true;
                 if (!_running) _ = StartSearchAsync();
             };
+
+        // --- path autocomplete ---
+        _suggestTimer.Tick += (_, _) => { _suggestTimer.Stop(); UpdatePathSuggestions(); };
+
+        cmbPath.TextUpdate += (_, _) =>
+        {
+            if (!_suppressSuggest) { _suggestTimer.Stop(); _suggestTimer.Start(); }
+        };
+        cmbPath.DropDown += (_, _) => { _suppressSuggest = true; DismissPathSuggestions(); };
+        cmbPath.DropDownClosed += (_, _) => _suppressSuggest = false;
+        cmbPath.LostFocus += (_, _) => DismissPathSuggestions();
+
+        cmbPath.KeyDown += (_, e) =>
+        {
+            if (_pathPopup?.IsOpen != true) return;
+            switch (e.KeyCode)
+            {
+                case Keys.Down:
+                    _pathPopup.Navigate(1);
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+                case Keys.Up:
+                    _pathPopup.Navigate(-1);
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+                case Keys.Escape:
+                    _pathPopup.Dismiss();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+                case Keys.Tab:
+                    _pathPopup.AcceptCurrent();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    break;
+            }
+        };
+
+        cmbPath.PreviewKeyDown += (_, e) =>
+        {
+            // Tab is normally a navigation key; tell the combo to treat it as input
+            // so KeyDown fires and can accept the popup selection.
+            if (e.KeyCode == Keys.Tab && _pathPopup?.IsOpen == true)
+                e.IsInputKey = true;
+        };
     }
 
     // ---------------------------------------------------------------- search
@@ -1288,6 +1347,37 @@ public partial class FindPage : UserControl
             MessageBox.Show(this, ex.Message, "File open error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
+
+    // ------------------------------------------------------- path autocomplete
+
+    private void UpdatePathSuggestions()
+    {
+        var text = cmbPath.Text;
+        var cursor = cmbPath.SelectionStart;
+        var (typed, segStart, segEnd) = PathSuggestPopup.SegmentAt(text, cursor);
+
+        var items = PathSuggestPopup.Suggest(typed);
+        if (items.Length == 0) { DismissPathSuggestions(); return; }
+
+        _pathPopup ??= CreatePathPopup();
+        _pathPopup.ShowBelow(cmbPath, items, segStart, segEnd);
+    }
+
+    private PathSuggestPopup CreatePathPopup()
+    {
+        var popup = new PathSuggestPopup();
+        popup.Accepted += (path, segStart, segEnd) =>
+        {
+            _suppressSuggest = true;
+            var text = cmbPath.Text;
+            cmbPath.Text = text[..segStart] + path + text[segEnd..];
+            cmbPath.SelectionStart = segStart + path.Length;
+            _suppressSuggest = false;
+        };
+        return popup;
+    }
+
+    private void DismissPathSuggestions() => _pathPopup?.Dismiss();
 
     // ---------------------------------------------------------- page state
 
