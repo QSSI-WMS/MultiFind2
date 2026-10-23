@@ -175,6 +175,7 @@ public sealed class MainForm : Form
 
         var edit = new ToolStripMenuItem("&Edit");
         edit.DropDownItems.Add("&Copy", null, (_, _) => ActivePage?.CopySelectionToClipboard()).ShortcutKey(Keys.Control | Keys.C);
+        edit.DropDownItems.Add("Cu&t", null, (_, _) => ActivePage?.CutSelectionToClipboard()).ShortcutKey(Keys.Control | Keys.X);
         edit.DropDownItems.Add("Select &All", null, (_, _) => ActivePage?.SelectAllResults()).ShortcutKey(Keys.Control | Keys.A);
 
         var pages = new ToolStripMenuItem("&Pages");

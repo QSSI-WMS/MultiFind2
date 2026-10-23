@@ -1185,7 +1185,12 @@ public partial class FindPage : UserControl
         menu.Items.Add("&Open", null, (_, _) => ShellOpen(ShellTarget(FirstSelectedMatch())));
         menu.Items.Add("Show in &Explorer", null, (_, _) => ShellMenu.Reveal(SelectedShellTargets()));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("&Copy full path", null, (_, _) => CopyToClipboard(SelectedPaths()));
+        menu.Items.Add(new ToolStripMenuItem("&Copy", null, (_, _) => CopyFilesToClipboard(cut: false))
+            { ShortcutKeyDisplayString = "Ctrl+C" });
+        menu.Items.Add(new ToolStripMenuItem("Cu&t", null, (_, _) => CopyFilesToClipboard(cut: true))
+            { ShortcutKeyDisplayString = "Ctrl+X" });
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Copy full &path", null, (_, _) => CopyToClipboard(SelectedPaths()));
         menu.Items.Add("Copy file &name", null, (_, _) => CopyToClipboard(SelectedMatches().Select(m => m.FileName)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Select &All", null, (_, _) => SelectAllResults());
@@ -1232,7 +1237,28 @@ public partial class FindPage : UserControl
         lvFound.SetAllSelected(true);
     }
 
-    public void CopySelectionToClipboard() => CopyToClipboard(SelectedPaths());
+    public void CopySelectionToClipboard() => CopyFilesToClipboard(cut: false);
+    public void CutSelectionToClipboard() => CopyFilesToClipboard(cut: true);
+
+    private void CopyFilesToClipboard(bool cut)
+    {
+        var paths = SelectedMatches().Select(m => ShellTarget(m)!)
+                                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                                    .ToArray();
+        if (paths.Length == 0) return;
+
+        var files = new System.Collections.Specialized.StringCollection();
+        files.AddRange(paths);
+
+        var data = new DataObject();
+        data.SetFileDropList(files);
+        data.SetText(string.Join(Environment.NewLine, paths));
+        var effect = BitConverter.GetBytes((int)(cut ? DragDropEffects.Move : DragDropEffects.Copy));
+        data.SetData("Preferred DropEffect", new MemoryStream(effect));
+
+        try { Clipboard.SetDataObject(data, true); }
+        catch (ExternalException) { }
+    }
 
     private void CopyToClipboard(IEnumerable<string> values)
     {
