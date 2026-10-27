@@ -457,7 +457,10 @@ public partial class FindPage : UserControl
         {
             if (!_suppressSuggest) { _suggestTimer.Stop(); _suggestTimer.Start(); }
         };
-        cmbPath.DropDown += (_, _) => { _suppressSuggest = true; DismissPathSuggestions(); };
+        cmbPath.DropDown += (_, _) => { _suppressSuggest = true; DismissPathSuggestions(); AutoSizeDropDown(cmbPath); };
+        cmbName.DropDown += (_, _) => AutoSizeDropDown(cmbName);
+        cmbContents.DropDown += (_, _) => AutoSizeDropDown(cmbContents);
+        cmbReplace.DropDown += (_, _) => AutoSizeDropDown(cmbReplace);
         cmbPath.DropDownClosed += (_, _) => _suppressSuggest = false;
         cmbPath.LostFocus += (_, _) => DismissPathSuggestions();
 
@@ -1255,6 +1258,21 @@ public partial class FindPage : UserControl
         combo.Text = typed;
     }
 
+    /// <summary>
+    /// Widen the dropdown to fit the longest item so long paths are not truncated.
+    /// </summary>
+    private static void AutoSizeDropDown(ComboBox combo)
+    {
+        int max = combo.Width;
+        using var g = combo.CreateGraphics();
+        foreach (var item in combo.Items)
+        {
+            var w = (int)g.MeasureString(item.ToString() ?? "", combo.Font).Width + SystemInformation.VerticalScrollBarWidth + 8;
+            if (w > max) max = w;
+        }
+        combo.DropDownWidth = max;
+    }
+
     // ------------------------------------------------------------- results
 
     private void OnRetrieveFound(object? sender, RetrieveVirtualItemEventArgs e)
@@ -1429,22 +1447,90 @@ public partial class FindPage : UserControl
 
     private void CopyFilesToClipboard(bool cut)
     {
-        var paths = SelectedMatches().Select(m => ShellTarget(m)!)
-                                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                                    .ToArray();
-        if (paths.Length == 0) return;
+        var matches = SelectedMatches().ToList();
+        if (matches.Count == 0) return;
+
+        // Count filenames to detect duplicates.
+        var nameCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in matches)
+        {
+            nameCount.TryGetValue(m.FileName, out int n);
+            nameCount[m.FileName] = n + 1;
+        }
+        bool hasDuplicates = nameCount.Values.Any(n => n > 1);
+
+        // Stage files. Archive entries always go through temp; standalone files
+        // only if their name collides with another selected file.
+        var tempDir = Path.Combine(Path.GetTempPath(), "MultiFind2_copy",
+                                   DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+        var nameIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var paths = new List<string>();
+
+        foreach (var m in matches)
+        {
+            bool needsTemp = m.IsInArchive || (hasDuplicates && nameCount[m.FileName] > 1);
+
+            if (!needsTemp)
+            {
+                paths.Add(m.FullPath);
+                continue;
+            }
+
+            // Assign a unique name: first occurrence keeps the original,
+            // subsequent ones get (2), (3), etc.
+            nameIndex.TryGetValue(m.FileName, out int idx);
+            nameIndex[m.FileName] = idx + 1;
+            var uniqueName = idx == 0 ? m.FileName : InsertSuffix(m.FileName, $" ({idx + 1})");
+
+            var temp = StageToTemp(m, tempDir, uniqueName);
+            if (temp != null) paths.Add(temp);
+        }
+
+        if (paths.Count == 0) return;
 
         var files = new System.Collections.Specialized.StringCollection();
-        files.AddRange(paths);
+        files.AddRange(paths.ToArray());
 
         var data = new DataObject();
         data.SetFileDropList(files);
         data.SetText(string.Join(Environment.NewLine, paths));
-        var effect = BitConverter.GetBytes((int)(cut ? DragDropEffects.Move : DragDropEffects.Copy));
+        var effect = BitConverter.GetBytes((int)DragDropEffects.Copy);
         data.SetData("Preferred DropEffect", new MemoryStream(effect));
 
         try { Clipboard.SetDataObject(data, true); }
         catch (ExternalException) { }
+    }
+
+    /// <summary>
+    /// Copy or extract a file to a temp directory with the given name.
+    /// </summary>
+    private static string? StageToTemp(FileMatch match, string tempDir, string name)
+    {
+        try
+        {
+            Directory.CreateDirectory(tempDir);
+            var dest = Path.Combine(tempDir, name);
+
+            if (match.IsInArchive)
+            {
+                using var src = Archives.OpenEntry(match.ArchivePath!, match.EntryKey!);
+                using var fs = new FileStream(dest, FileMode.Create, FileAccess.Write);
+                src.CopyTo(fs);
+            }
+            else
+            {
+                File.Copy(match.FullPath, dest, overwrite: true);
+            }
+            return dest;
+        }
+        catch { return null; }
+    }
+
+    private static string InsertSuffix(string fileName, string suffix)
+    {
+        var ext = Path.GetExtension(fileName);
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        return stem + suffix + ext;
     }
 
     private void CopyToClipboard(IEnumerable<string> values)
