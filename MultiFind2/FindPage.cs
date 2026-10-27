@@ -393,7 +393,7 @@ public partial class FindPage : UserControl
         lvErrors.RetrieveVirtualItem += OnRetrieveError;
 
         lvFound.ColumnClick += OnFoundColumnClick;
-        lvFound.DoubleClick += (_, _) => ShellOpen(ShellTarget(FirstSelectedMatch()));
+        lvFound.DoubleClick += (_, _) => OpenMatch(FirstSelectedMatch());
 
         // No ContextMenuStrip: the shell menu is shown by hand so it can be tracked natively.
         // _ownMenu is what gets used when the shell declines -- a row whose file has since been
@@ -1364,7 +1364,7 @@ public partial class FindPage : UserControl
 
         var extra = new (string Text, Action Run)[]
         {
-            ("Show in Explorer", () => ShellMenu.Reveal(paths)),
+            ("Show in Explorer", () => RevealMatches()),
             ("Copy full path", () => CopyToClipboard(paths)),
             ("Copy file name", () => CopyToClipboard(SelectedMatches().Select(m => m.FileName))),
             ("Select all rows", SelectAllResults)
@@ -1387,8 +1387,8 @@ public partial class FindPage : UserControl
     {
         var menu = new ContextMenuStrip { Renderer = new ThemeMenuRenderer() };
         Style(() => { menu.BackColor = CMantle; menu.ForeColor = CText; });
-        menu.Items.Add("&Open", null, (_, _) => ShellOpen(ShellTarget(FirstSelectedMatch())));
-        menu.Items.Add("Show in &Explorer", null, (_, _) => ShellMenu.Reveal(SelectedShellTargets()));
+        menu.Items.Add("&Open", null, (_, _) => OpenMatch(FirstSelectedMatch()));
+        menu.Items.Add("Show in &Explorer", null, (_, _) => RevealMatches());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("&Copy", null, (_, _) => CopyFilesToClipboard(cut: false))
             { ShortcutKeyDisplayString = "Ctrl+C" });
@@ -1424,6 +1424,44 @@ public partial class FindPage : UserControl
         => SelectedMatches().Select(m => ShellTarget(m)!)
                             .Distinct(StringComparer.OrdinalIgnoreCase)
                             .Take(1000).ToList();
+
+    /// <summary>
+    /// Open the matched file. For archive entries, extract to temp first so the
+    /// actual file opens rather than the archive.
+    /// </summary>
+    private void OpenMatch(FileMatch? match)
+    {
+        if (match == null) return;
+        if (!match.IsInArchive) { ShellOpen(match.FullPath); return; }
+
+        var temp = StageToTemp(match,
+            Path.Combine(Path.GetTempPath(), "MultiFind2_open"),
+            match.FileName);
+        if (temp != null) ShellOpen(temp);
+    }
+
+    /// <summary>
+    /// Reveal selected files in Explorer. For .zip archive entries, use the full
+    /// virtual path so Explorer navigates into the zip. For other archive types
+    /// (which Explorer cannot browse), reveal the archive file itself.
+    /// </summary>
+    private void RevealMatches()
+    {
+        var paths = SelectedMatches()
+            .Select(m =>
+            {
+                if (!m.IsInArchive) return m.FullPath;
+                // Explorer can browse inside .zip files via the Shell namespace.
+                if (m.ArchivePath!.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    return m.FullPath;
+                // Other archive types: reveal the archive itself.
+                return m.ArchivePath!;
+            })
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(1000).ToList();
+
+        if (paths.Count > 0) ShellMenu.Reveal(paths);
+    }
 
     /// <summary>
     /// The topmost selected row. Separate from <see cref="SelectedMatches"/> because asking for
