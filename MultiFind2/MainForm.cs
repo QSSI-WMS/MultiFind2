@@ -342,11 +342,72 @@ public sealed class MainForm : Form
     }
 
     private void ShowAbout()
-        => MessageBox.Show(this,
-            "MultiFind2\n\nA multi-criteria file search tool.\n\n" +
-            "Modified column shows date and time, and sorts chronologically.\n" +
-            "Cancel stops a running search with a single click.",
-            "About", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    {
+        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+        var ver = asm.GetName().Version;
+        var exePath = Environment.ProcessPath;
+        var built = !string.IsNullOrEmpty(exePath) ? File.GetLastWriteTime(exePath) : (DateTime?)null;
+
+        var dlg = new Form
+        {
+            Text = "About MultiFind2",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterParent,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ShowInTaskbar = false,
+            ClientSize = new Size(380, 220),
+        };
+
+        dlg.SuspendLayout();
+
+        var t = Theme.Current;
+        DialogChrome.Apply(dlg);
+
+        var title = new Label
+        {
+            Text = "MultiFind2",
+            AutoSize = true,
+            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 14f, FontStyle.Bold),
+            ForeColor = t.Blue,
+            Location = new Point(20, 18),
+        };
+
+        var version = new Label
+        {
+            Text = $"Version {ver?.ToString(3) ?? "?"}" + (built.HasValue ? $"\nBuilt {built:yyyy-MM-dd HH:mm}" : ""),
+            AutoSize = true,
+            ForeColor = t.Subtext,
+            Location = new Point(22, title.PreferredHeight + 24),
+        };
+
+        var desc = new Label
+        {
+            Text = "Multi-criteria file search and replace tool.\n" +
+                   "Search by path, name pattern, file contents, size and date.\n" +
+                   "Supports regular expressions, hex search, and compressed archives.",
+            AutoSize = true,
+            ForeColor = t.Text,
+            Location = new Point(22, title.PreferredHeight + version.PreferredHeight + 46),
+            MaximumSize = new Size(340, 0),
+        };
+
+        var ok = DialogChrome.Action("OK", DialogResult.OK, 270, 180, accent: true);
+
+        dlg.Controls.Add(title);
+        dlg.Controls.Add(version);
+        dlg.Controls.Add(desc);
+        dlg.Controls.Add(ok);
+        dlg.AcceptButton = ok;
+        dlg.CancelButton = ok;
+
+        dlg.AutoScaleDimensions = new SizeF(96F, 96F);
+        dlg.AutoScaleMode = AutoScaleMode.Dpi;
+        dlg.ResumeLayout(true);
+
+        dlg.ShowDialog(this);
+        dlg.Dispose();
+    }
 
     protected override void OnDpiChanged(DpiChangedEventArgs e)
     {

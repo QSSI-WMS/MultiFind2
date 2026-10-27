@@ -32,6 +32,7 @@ public sealed class TriStateButton : Button
         // and the active-filter highlight invisible.
         FlatStyle = FlatStyle.Flat;
         FlatAppearance.BorderSize = 1;
+        UseVisualStyleBackColor = false;
     }
 
     /// <summary>Re-reads <see cref="Theme.Current"/>; called when the user switches theme.</summary>

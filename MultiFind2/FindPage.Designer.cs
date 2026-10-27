@@ -179,6 +179,14 @@ partial class FindPage
         grpAdvanced.Size = new Size(560, 156);
         pnlButtons.Size = new Size(124, 156);
 
+        // FlatStyle must be set BEFORE children are added so that the GroupBox's
+        // DisplayRectangle (which anchor offsets are computed from) matches what
+        // is used at runtime.  Without this, the thicker Standard-style border on
+        // older Windows produces different anchor offsets that push right-anchored
+        // buttons behind the left-right-anchored combo boxes.
+        grpGeneral.FlatStyle = FlatStyle.Flat;
+        grpAdvanced.FlatStyle = FlatStyle.Flat;
+
         // pnlTop  (docking order matters: buttons and Advanced pin right, General fills)
         pnlTop.Name = "pnlTop";
 
@@ -212,7 +220,7 @@ partial class FindPage
         lblPath.Name = "lblPath";
         lblPath.Text = "Search path:";
 
-        cmbPath.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        cmbPath.Anchor = AnchorStyles.Top | AnchorStyles.Left;
         cmbPath.Location = new Point(92, 20);
         cmbPath.Name = "cmbPath";
         cmbPath.Size = new Size(334, 23);
@@ -262,7 +270,7 @@ partial class FindPage
         lblName.Name = "lblName";
         lblName.Text = "File name:";
 
-        cmbName.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        cmbName.Anchor = AnchorStyles.Top | AnchorStyles.Left;
         cmbName.Location = new Point(92, 48);
         cmbName.Name = "cmbName";
         cmbName.Size = new Size(334, 23);
@@ -300,7 +308,7 @@ partial class FindPage
         lblContents.Name = "lblContents";
         lblContents.Text = "File contents:";
 
-        cmbContents.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        cmbContents.Anchor = AnchorStyles.Top | AnchorStyles.Left;
         cmbContents.Location = new Point(92, 76);
         cmbContents.Name = "cmbContents";
         cmbContents.Size = new Size(334, 23);
@@ -327,7 +335,7 @@ partial class FindPage
         chkReplace.UseVisualStyleBackColor = true;
         tips.SetToolTip(chkReplace, "Enable replacing the matched file contents");
 
-        cmbReplace.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        cmbReplace.Anchor = AnchorStyles.Top | AnchorStyles.Left;
         cmbReplace.Location = new Point(92, 104);
         cmbReplace.Name = "cmbReplace";
         cmbReplace.Size = new Size(458, 23);
@@ -529,9 +537,7 @@ partial class FindPage
 
         pnlTop.ResumeLayout(false);
         grpGeneral.ResumeLayout(false);
-        grpGeneral.PerformLayout();
         grpAdvanced.ResumeLayout(false);
-        grpAdvanced.PerformLayout();
         pnlButtons.ResumeLayout(false);
         tabResults.ResumeLayout(false);
         tabFound.ResumeLayout(false);
@@ -546,8 +552,6 @@ partial class FindPage
         ((System.ComponentModel.ISupportInitialize)numAfter).EndInit();
         splitResults.ResumeLayout(false);
         ((System.ComponentModel.ISupportInitialize)splitResults).EndInit();
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        AutoScaleMode = AutoScaleMode.Dpi;
         ResumeLayout(false);
     }
 

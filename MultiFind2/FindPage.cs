@@ -240,6 +240,7 @@ public partial class FindPage : UserControl
     {
         button.FlatStyle = FlatStyle.Flat;
         button.FlatAppearance.BorderSize = 1;
+        button.UseVisualStyleBackColor = false;
         Style(() =>
         {
             button.BackColor = CSurface0;
@@ -268,6 +269,7 @@ public partial class FindPage : UserControl
     {
         box.FlatStyle = FlatStyle.Flat;
         box.FlatAppearance.BorderSize = 1;
+        box.UseVisualStyleBackColor = false;
 
         void Paint()
         {
@@ -417,6 +419,21 @@ public partial class FindPage : UserControl
 
         chkReplace.CheckedChanged += (_, _) => SyncReplacesColumn();
 
+        // Manually stretch the combos to fill the space before the right-anchored buttons.
+        // The built-in Left|Right anchor computes wrong margins on some OS versions (e.g.
+        // Server 2012 R2), causing the combos to cover the buttons.
+        // The button block is 4 × 30px wide, starting 6px after the combo ends.
+        const int ButtonBlockFromRight = 146;
+        grpGeneral.Resize += (_, _) =>
+        {
+            int dr = grpGeneral.DisplayRectangle.Right;
+            int comboRight = dr - ButtonBlockFromRight;
+            cmbPath.Width = comboRight - cmbPath.Left;
+            cmbName.Width = comboRight - cmbName.Left;
+            cmbContents.Width = comboRight - cmbContents.Left;
+            cmbReplace.Width = dr - 6 - cmbReplace.Left;
+        };
+
         foreach (var combo in new[] { cmbPath, cmbName, cmbContents })
             combo.KeyDown += (s, e) =>
             {
@@ -480,6 +497,117 @@ public partial class FindPage : UserControl
                 e.IsInputKey = true;
         };
     }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.F12) { ShowLayoutDiag(); return true; }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    // ---------------------------------------------------------------- diag
+
+    private Form? _diagForm;
+
+    private TextBox? _diagTxt;
+
+    private void ShowLayoutDiag()
+    {
+        if (_diagForm != null && !_diagForm.IsDisposed) { _diagForm.BringToFront(); RefreshDiag(); return; }
+
+        _diagTxt = new TextBox
+        {
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            Dock = DockStyle.Fill,
+            Font = new Font("Consolas", 9f),
+            BackColor = Color.Black,
+            ForeColor = Color.Lime,
+        };
+
+        var btnPlus = new Button { Text = "Widen cmbPath +20", Dock = DockStyle.Bottom, Height = 30 };
+        var btnMinus = new Button { Text = "Narrow cmbPath -20", Dock = DockStyle.Bottom, Height = 30 };
+        var btnRefresh = new Button { Text = "Refresh", Dock = DockStyle.Bottom, Height = 30 };
+
+        btnPlus.Click += (_, _) => { cmbPath.Width += 20; RefreshDiag(); };
+        btnMinus.Click += (_, _) => { cmbPath.Width -= 20; RefreshDiag(); };
+        btnRefresh.Click += (_, _) => RefreshDiag();
+
+        _diagForm = new Form
+        {
+            Text = "Layout Diagnostics (F12)",
+            ClientSize = new Size(520, 520),
+            StartPosition = FormStartPosition.CenterScreen,
+            TopMost = true,
+        };
+        _diagForm.Controls.Add(_diagTxt);
+        _diagForm.Controls.Add(btnRefresh);
+        _diagForm.Controls.Add(btnMinus);
+        _diagForm.Controls.Add(btnPlus);
+        _diagForm.Show();
+
+        RefreshDiag();
+    }
+
+    private void RefreshDiag()
+    {
+        if (_diagTxt == null) return;
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== FindPage ===");
+            sb.AppendLine($"  Size:           {Size}");
+            sb.AppendLine($"  ClientSize:     {ClientSize}");
+            sb.AppendLine();
+            sb.AppendLine($"=== pnlTop ===");
+            sb.AppendLine($"  Bounds:         {pnlTop.Bounds}");
+            sb.AppendLine($"  Padding:        {pnlTop.Padding}");
+            sb.AppendLine($"  DisplayRect:    {pnlTop.DisplayRectangle}");
+            sb.AppendLine();
+            sb.AppendLine($"=== grpGeneral ===");
+            sb.AppendLine($"  Bounds:         {grpGeneral.Bounds}");
+            sb.AppendLine($"  Size:           {grpGeneral.Size}");
+            sb.AppendLine($"  DisplayRect:    {grpGeneral.DisplayRectangle}");
+            sb.AppendLine($"  FlatStyle:      {grpGeneral.FlatStyle}");
+            sb.AppendLine($"  Dock:           {grpGeneral.Dock}");
+            sb.AppendLine();
+            sb.AppendLine($"=== grpAdvanced ===");
+            sb.AppendLine($"  Bounds:         {grpAdvanced.Bounds}");
+            sb.AppendLine($"  DisplayRect:    {grpAdvanced.DisplayRectangle}");
+            sb.AppendLine();
+            sb.AppendLine($"=== pnlButtons ===");
+            sb.AppendLine($"  Bounds:         {pnlButtons.Bounds}");
+            sb.AppendLine();
+            sb.AppendLine($"--- Path row ---");
+            sb.AppendLine($"  cmbPath:        {Desc(cmbPath)}");
+            sb.AppendLine($"  btnPathBrowse:  {Desc(btnPathBrowse)}");
+            sb.AppendLine($"  btnPathMulti:   {Desc(btnPathMulti)}");
+            sb.AppendLine($"  btnSubfolders:  {Desc(btnSubfolders)}");
+            sb.AppendLine($"  chkArchives:    {Desc(chkArchives)}");
+            sb.AppendLine();
+            sb.AppendLine($"--- Name row ---");
+            sb.AppendLine($"  cmbName:        {Desc(cmbName)}");
+            sb.AppendLine($"  btnNameMulti:   {Desc(btnNameMulti)}");
+            sb.AppendLine($"  tsHidden:       {Desc(tsHidden)}");
+            sb.AppendLine($"  tsReadOnly:     {Desc(tsReadOnly)}");
+            sb.AppendLine($"  tsFolders:      {Desc(tsFolders)}");
+            sb.AppendLine();
+            sb.AppendLine($"--- Contents row ---");
+            sb.AppendLine($"  cmbContents:    {Desc(cmbContents)}");
+            sb.AppendLine($"  chkCase:        {Desc(chkCase)}");
+            sb.AppendLine($"  chkWhole:       {Desc(chkWhole)}");
+            sb.AppendLine($"  chkHex:         {Desc(chkHex)}");
+            sb.AppendLine($"  chkRegex:       {Desc(chkRegex)}");
+            sb.AppendLine();
+            sb.AppendLine($"--- Environment ---");
+            sb.AppendLine($"  DeviceDpi:      {DeviceDpi}");
+            sb.AppendLine($"  OS:             {Environment.OSVersion}");
+
+            _diagTxt.Text = sb.ToString();
+        }
+    }
+
+    private static string Desc(Control c) =>
+        $"Bounds={c.Bounds}  Anchor={c.Anchor}  Visible={c.Visible}";
 
     // ---------------------------------------------------------------- search
 
