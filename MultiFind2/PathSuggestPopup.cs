@@ -82,12 +82,26 @@ internal sealed class PathSuggestPopup : Form
         _list.BackColor = t.Crust;
         _list.ForeColor = t.Text;
 
+        // Auto-size width to fit the longest item so paths aren't truncated.
+        int width = anchor.Width;
+        using (var g = _list.CreateGraphics())
+        {
+            foreach (var item in items)
+            {
+                var w = (int)g.MeasureString(item, _list.Font).Width + SystemInformation.VerticalScrollBarWidth + 12;
+                if (w > width) width = w;
+            }
+        }
+
+        // Cap at the screen width so the popup doesn't go off-screen.
         var pt = anchor.PointToScreen(new Point(0, anchor.Height));
-        Location = pt;
+        var screen = Screen.FromPoint(pt).WorkingArea;
+        width = Math.Min(width, screen.Right - pt.X);
 
         int visibleCount = Math.Min(items.Length, 12);
         int itemH = _list.ItemHeight > 0 ? _list.ItemHeight : 15;
-        Size = new Size(Math.Max(anchor.Width, 300), itemH * visibleCount + 4);
+        Location = pt;
+        Size = new Size(width, itemH * visibleCount + 4);
 
         if (!Visible) Show(anchor.FindForm());
     }
